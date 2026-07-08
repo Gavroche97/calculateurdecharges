@@ -34,19 +34,19 @@ class Provision:
     """
     Classe d'objet permettant de définir une provision de copropriété avec son nom et son montant associé.
     """ 
-    def __init__(self, Nom, Provision,Description,IDPrestation=None,IDTantieme=None):
+    def __init__(self, Nom, Provision,Description,IDPrestation=None,IDTantiemes=None):
         self.Nom = Nom 
         self.Provision = Provision 
         self.Description = Description
         self.IDPrestation = IDPrestation
-        self.IDTantieme = IDTantieme
+        self.IDTantiemes = IDTantiemes
 
 class CalculateurDeCharges:
     """
     Classe d'objet permettant de calculer les charges de copropriété en fonction des lots, des prestations et des provisions.
     """
-    def __init__(self,LstLot:  List[Lot],
-                LstProvisions: List[Provision], 
+    def __init__(self,LstLot:  list[Lot],
+                LstProvisions: list[Provision], 
                 TantiemesTotaux=10000):
 
         #Initialiser les attributs de la classe
@@ -57,21 +57,18 @@ class CalculateurDeCharges:
         tableauTantiemesInitialise = {
             'Postes de provisions': [provision.Nom for provision in LstProvisions],
             'ID prestation':[provision.IDPrestation for provision in LstProvisions],
-            'ID tantieme':[provision.IDTantieme for provision in LstProvisions],
+            'ID tantiemes':[provision.IDTantiemes for provision in LstProvisions],
             'Tantiemes': 0,
             'Provisions':[provision.Provision for provision in LstProvisions],
         }
         self.DfCharges= pd.DataFrame(tableauTantiemesInitialise)
 
         #Incrémenter les tantièmes dans le tableau des charges
-        for provision in LstProvisions:
-            for lot in LstLot:
-                #On récupère les tantièmes du lot pour le poste de provision
-                tantiemesLot = lot.DfTantiemes.loc[lot.DfTantiemes['ID des subdivisions'] == provision.IDPrestation, 'Tantiemes'].values[0]
-                #On l'ajoute dans le tableau des charges
-                self.DfCharges.loc[self.DfCharges['ID tantieme'] == provision.IDTantieme, 'Tantiemes'] += tantiemesLot
+        for lot in LstLot:
+            self.DfCharges['Tantiemes'] += self.DfCharges['ID tantiemes'].map(
+                lot.DfTantiemes.set_index('Label des subdivisions')['Tantiemes']).fillna(0)
 
-    def Etape1ConstruireTableauDeCharges (self, LstPrestationsSelectionnees: List[Prestation]):
+    def Etape1ConstruireTableauDeCharges (self, LstPrestationsSelectionnees: list[Prestation]):
         """
         Méthode permettant de calculer les charges totales de copropriété en fonction des prestations et des provisions.
         """
@@ -133,10 +130,10 @@ class CalculateurDeCharges:
 def ImporterDonneesDeLaResidence():
     DonneesDeLaResidence= pd.read_excel("input.xlsx", sheet_name=["Provisions", "Prestations", "Lots"])
     #Récupérer un dictionnaire de tantièmes pour les lots
-    DicoDeTantiemes = DonneesDeLaResidence["Lots"].drop(columns=['Lots', 'Description']).to_dict(orient='list')
-
+    DicoDeTantiemes = DonneesDeLaResidence["Lots"].drop(columns=['Numéro de lot', 'Description']).to_dict(orient='index')
     LstLots = [Lot(row["Description"], row["Numéro de lot"],DicoDeTantiemes) for index, row in DonneesDeLaResidence["Lots"].iterrows()]
-    LstProvisions = [Provision(row["Label de la provision"], row["Provision"],row["Description"],row["ID prestation"],row["ID tantieme"]) for index, row in DonneesDeLaResidence["Provisions"].iterrows()]
+    
+    LstProvisions = [Provision(row["Label de la provision"], row["Provision"],row["Description"],row["ID"],row["ID tantiemes"]) for index, row in DonneesDeLaResidence["Provisions"].iterrows()]
     LstPrestations = [Prestation(row["Label de la prestation"], row["Total TTC"],row["Description"],row["Prestataire"],row["ID prestation"]) for index, row in DonneesDeLaResidence["Prestations"].iterrows()]
 
     return LstLots, LstProvisions, LstPrestations
@@ -156,13 +153,17 @@ st.subheader("Sélectionnez les lots et les prestations pour voir le calcul des 
 LstLotsChoisis = st.multiselect(
     "Choisissez un ou plusieurs lots :",
     options=LstLots,
-    format_func=lambda lot: lot.IDNotaire  # On affiche juste le nom dans la liste déroulante
+    format_func=lambda lot: str(lot.IDNotaire)  # On affiche juste le nom dans la liste déroulante
 )
 
 # Une condition pour afficher un message si le texte est rempli
 if LstLotsChoisis:
-    st.write(f"Vous avez sélectionné les lots suivants : {', '.join([lot.IDNotaire for lot in LstLotsChoisis])}")
+    st.write("**Vous avez sélectionné les lots suivants :**")
+    for lot in LstLotsChoisis:
+        # Chaque st.write crée automatiquement une nouvelle ligne
+        st.write(f"🔹 {lot.IDNotaire} - {lot.Description}")
 
-# Un slider interactif
-age = st.slider("Sélectionnez votre âge", 0, 100, 25)
-st.write(f"Vous avez {age} ans.")
+#Initialisation du calculateur de charges avec les lots choisis et les provisions
+SimulationEnCours=CalculateurDeCharges(LstLotsChoisis, LstProvisions)
+
+
