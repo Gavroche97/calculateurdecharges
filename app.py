@@ -1,49 +1,45 @@
 import streamlit as st
 import pandas as pd
 
-#
-# Classe de Calculateur de charges de copropriété
-#
+###################################################
+# Classe de Calculateur de charges de copropriété #
+###################################################
 
 class Lot:
     """
     Classe d'objet permettant de définir un lot de copropriété avec ses ID et ses tantièles associés aux subdivisions.
     """
-    def __init__(self, IDCommercial, IDNotaire, DicoTaxonomieTantiemes: dict[str,str]):
+    def __init__(self,description, IDNotaire, DicoTaxonomieTantiemes: dict[str, float]):
         self.IDNotaire = IDNotaire
-
+        self.Description = description
         #Créer un dico pour initialiser le tableau des tantièmes
         tableauTantiemesInitialise = {
-            'Label des subdivisions': DicoTaxonomieTantiemes.value(),
-            'ID des subdivisions': DicoTaxonomieTantiemes.keys(),
-            'Tantiemes':0
-        }
-        self.DfTantiemes= pd.DataFrame(tableauTantiemesInitialise)
-
-    def DefinirTantiemes(self, TantiemesParSubdivision: dict[str, int]):
-        for IDSubdivision, tantiemes in TantiemesParSubdivision.items():
-            self.DfTantiemes.loc[self.DfTantiemes['ID des subdivisions'] == IDSubdivision, 'Tantiemes'] = tantiemes
+            'Label des subdivisions': DicoTaxonomieTantiemes.keys(),
+            'Tantiemes':DicoTaxonomieTantiemes.values()
+        } 
+        self.DfTantiemes= pd.DataFrame(tableauTantiemesInitialise) 
 
 class Prestation:
     """
     Classe d'objet permettant de définir une prestation de copropriété avec son nom et son coût associé.
     """
-    def __init__(self, Nom, Cout,Description,ID=None):
+    def __init__(self, Nom, Cout,Description,Prestataire,IDPrestation=None):
         self.Nom = Nom
         self.Cout = Cout
         self.Description = Description
-        self.ID = ID
+        self.IDPrestation = IDPrestation
+        self.Prestataire=Prestataire
 
 class Provision:
     """
     Classe d'objet permettant de définir une provision de copropriété avec son nom et son montant associé.
-    """
-    def __init__(self, Nom, Provision,Description,TopConsommationChauffage=False,ID=None):
-        self.Nom = Nom
-        self.Provision = Provision
+    """ 
+    def __init__(self, Nom, Provision,Description,IDPrestation=None,IDTantieme=None):
+        self.Nom = Nom 
+        self.Provision = Provision 
         self.Description = Description
-        self.ID = ID
-        self.TopConsommationChauffage=TopConsommationChauffage 
+        self.IDPrestation = IDPrestation
+        self.IDTantieme = IDTantieme
 
 class CalculateurDeCharges:
     """
@@ -52,12 +48,16 @@ class CalculateurDeCharges:
     def __init__(self,LstLot:  List[Lot],
                 LstProvisions: List[Provision], 
                 TantiemesTotaux=10000):
-        self.Lots = LstLot
+
+        #Initialiser les attributs de la classe
+        self.Lots = LstLot 
         self.TantiemesTotaux = TantiemesTotaux
 
         #Créer un dico pour initialiser le tableau des tantièmes
         tableauTantiemesInitialise = {
             'Postes de provisions': [provision.Nom for provision in LstProvisions],
+            'ID prestation':[provision.IDPrestation for provision in LstProvisions],
+            'ID tantieme':[provision.IDTantieme for provision in LstProvisions],
             'Tantiemes': 0,
             'Provisions':[provision.Provision for provision in LstProvisions],
         }
@@ -67,9 +67,9 @@ class CalculateurDeCharges:
         for provision in LstProvisions:
             for lot in LstLot:
                 #On récupère les tantièmes du lot pour le poste de provision
-                tantiemesLot = lot.DfTantiemes.loc[lot.DfTantiemes['ID des subdivisions'] == provision.ID, 'Tantiemes'].values[0]
+                tantiemesLot = lot.DfTantiemes.loc[lot.DfTantiemes['ID des subdivisions'] == provision.IDPrestation, 'Tantiemes'].values[0]
                 #On l'ajoute dans le tableau des charges
-                self.DfCharges.loc[self.DfCharges['Postes de provisions'] == provision.Nom, 'Tantiemes'] += tantiemesLot
+                self.DfCharges.loc[self.DfCharges['ID tantieme'] == provision.IDTantieme, 'Tantiemes'] += tantiemesLot
 
     def Etape1ConstruireTableauDeCharges (self, LstPrestationsSelectionnees: List[Prestation]):
         """
@@ -81,18 +81,18 @@ class CalculateurDeCharges:
         self.DfCharges['Charge'] = 0
 
         #Itération pour calculer les charges totales
-        for provision in self.DfCharges.itertuples():
+        for index, row in self.DfCharges.iterrows():
             CoutReelDuPosteDeProvision = 0
             #Pour chaque provision on checke si on a des prestations associées
             for prestation in self.PrestationsSelectionnees:
                 #S'il y a des prestations associées à la provision, on ajoute le coût de la prestation aux charges totales
-                if prestation.IDPosteDeProvision == provision.IDPosteDeProvision:
+                if prestation.IDPrestation == row['ID prestation']:
                     CoutReelDuPosteDeProvision += prestation.Cout
             #Si aucune prestation n'est associée à la provision, on prend le coût de la provision
             if CoutReelDuPosteDeProvision==0:
-                CoutReelDuPosteDeProvision=provision.Cout
+                CoutReelDuPosteDeProvision=row['Cout']
             #On ajoute le coût réel du poste de provision aux charges totales
-            self.DfCharges.loc[self.DfCharges['Postes de provisions'] == provision.Nom, 'Charge'] = CoutReelDuPosteDeProvision
+            self.DfCharges.loc[self.DfCharges['ID prestation'] == row['ID prestation'], 'Charge'] = CoutReelDuPosteDeProvision
 
     def Etape2CalculerLesChargesParLot (self):
         """
@@ -101,50 +101,67 @@ class CalculateurDeCharges:
         #Pour chaque tantièmes on calcul les couts
         self.DfCharges['Charges pour les lots sélectionnés'] = self.DfCharges.Charge * self.DfCharges.Tantiemes / self.TantiemesTotaux
 
-    def Etape3InclureLaConsommationIndividuelleDeChauffage (self, 
-                TemperatureLot=19, TemperatureExterieure=19, TemperatureResidence=19, 
-                PrixTonneDeGranule=500,#392 pour CRAM, 392 pour PROCHALOR 
-                PrixMWhGaz=100, 
-                ConsommationTonnesGranule=40, ConsommationMWhGaz=30):
+    def Etape3aParametrerLesTemperatures(self, TemperatureLot=19, TemperatureExterieure=19, TemperatureResidence=19):
         """
-        Méthode permettant d'inclure la consommation individuelle de chauffage dans le calcul des charges par lot.
+        Méthode permettant de paramétrer les températures pour le calcul des charges de chauffage.
         """
         self.TemperatureLot = TemperatureLot
         self.TemperatureExterieure = TemperatureExterieure
         self.TemperatureResidence = TemperatureResidence
 
-        self.PrixTonneDeGranule = PrixTonneDeGranule
-        self.PrixMWh = PrixMWhGaz
+    def Etape3bCalculerLaConsommationIndividuelleDeChauffage (self, IDPrestation,
+                Prixunitaire=500,#Biomasse: 392 pour CRAM, 392 pour PROCHALOR 
+                ConsommationUnitaire=40):
+        """
+        Méthode permettant d'inclure la consommation individuelle de chauffage dans le calcul des charges par lot.
+        """
+        #Calcul de la charge totale pour la résidence
+        ChargeTotaleDeLaResidence=ConsommationUnitaire * Prixunitaire
 
-        self.ConsommationTonnesGranule = ConsommationTonnesGranule
-        self.ConsommationMWhGaz = ConsommationMWhGaz
-        #On fait le calcul de la consommation individuelle de chauffage en fonction des températures et des prix
-        self.ChargeTotaleDeGranuleDeLaResidence=self.ConsommationTonnesGranule * self.PrixTonneDeGranule
-        self.ChargeTotaleDeGazDeLaResidence=self.ConsommationMWhGaz * self.PrixMWh
+        #Calcul de la charge pour le copropriétaire
+        ChargeCommuneDeGranule=ChargeTotaleDeLaResidence * 0.3
+        ChargeIndividuelle=ChargeTotaleDeLaResidence *0.7 * (self.TemperatureLot - self.TemperatureExterieure) / (self.TemperatureResidence - self.TemperatureExterieure)
 
-        self.ChargeCommuneDeGranule=self.ChargeTotaleDeGranuleDeLaResidence * 0.3
-        self.ChargeCommuneDeGaz=self.ChargeTotaleDeGazDeLaResidence * 0.3
+        ChargeTotalePourLeLot=ChargeCommuneDeGranule + ChargeIndividuelle
 
-        self.ChargeIndividuelleDeGranule=self.ChargeTotaleDeGranuleDeLaResidence * 0.7 * (self.TemperatureLot - self.TemperatureExterieure) / (self.TemperatureResidence - self.TemperatureExterieure)
-        self.ChargeIndividuelleDeGaz=self.ChargeTotaleDeGazDeLaResidence *0.7 * (self.TemperatureLot - self.TemperatureExterieure) / (self.TemperatureResidence - self.TemperatureExterieure)
+        #Mise à jour dans le tableau des charges
+        self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charge'] = ChargeTotalePourLeLot
+        self.Etape2CalculerLesChargesParLot()
 
-        self.DfCharges.loc[self.DfCharges['Postes de provisions'] == "Consommation de chauffage", 'Charge'] = self.ChargeIndividuelleDeGranule + self.ChargeIndividuelleDeGaz
-#
-# Début de l'affiche du site web #
-# 
+#Import de données de provision, prestations et tantièmes
+@st.cache_data
+def ImporterDonneesDeLaResidence():
+    DonneesDeLaResidence= pd.read_excel("input.xlsx", sheet_name=["Provisions", "Prestations", "Lots"])
+    #Récupérer un dictionnaire de tantièmes pour les lots
+    DicoDeTantiemes = DonneesDeLaResidence["Lots"].drop(columns=['Lots', 'Description']).to_dict(orient='list')
+
+    LstLots = [Lot(row["Description"], row["Numéro de lot"],DicoDeTantiemes) for index, row in DonneesDeLaResidence["Lots"].iterrows()]
+    LstProvisions = [Provision(row["Label de la provision"], row["Provision"],row["Description"],row["ID prestation"],row["ID tantieme"]) for index, row in DonneesDeLaResidence["Provisions"].iterrows()]
+    LstPrestations = [Prestation(row["Label de la prestation"], row["Total TTC"],row["Description"],row["Prestataire"],row["ID prestation"]) for index, row in DonneesDeLaResidence["Prestations"].iterrows()]
+
+    return LstLots, LstProvisions, LstPrestations
+
+LstLots, LstProvisions, LstPrestations = ImporterDonneesDeLaResidence()
+##################################
+# Début de l'affiche du site web 
+##################################
 
 # Titre de l'application
 st.title("Calculateur de charges de copropriété")
 
 # Un sous-titre
 st.subheader("Ce calculateur permet d'estimer les charges de copropriété en fonction des prestations sélectionnées et des tantièmes des lots choisis")
-
+st.subheader("Sélectionnez les lots et les prestations pour voir le calcul des charges.")
 # Un widget interactif : une boîte de saisie de texte
-nom = st.text_input("Quel est votre nom ?")
+LstLotsChoisis = st.multiselect(
+    "Choisissez un ou plusieurs lots :",
+    options=LstLots,
+    format_func=lambda lot: lot.IDNotaire  # On affiche juste le nom dans la liste déroulante
+)
 
 # Une condition pour afficher un message si le texte est rempli
-if nom:
-    st.write(f"Bonjour {nom} ! Ravi de vous rencontrer.")
+if LstLotsChoisis:
+    st.write(f"Vous avez sélectionné les lots suivants : {', '.join([lot.IDNotaire for lot in LstLotsChoisis])}")
 
 # Un slider interactif
 age = st.slider("Sélectionnez votre âge", 0, 100, 25)
