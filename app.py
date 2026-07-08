@@ -109,12 +109,26 @@ class CalculateurDeCharges:
         """
         Méthode permettant d'inclure la consommation individuelle de chauffage dans le calcul des charges par lot.
         """
-        #On fait le calcul de la consommation individuelle de chauffage en fonction des températures et des prix
-        ConsommationTotaleDeGranule=ConsommationTonnesGranule * PrixTonneDeGranule
-        ConsommationTotaleDeGaz=ConsommationMWhGaz * PrixMWh
+        self.TemperatureLot = TemperatureLot
+        self.TemperatureExterieure = TemperatureExterieure
+        self.TemperatureResidence = TemperatureResidence
 
-#Reprendre ici
-        self.DfCharges.loc[self.DfCharges['Postes de provisions'] == "Consommation de chauffage", 'Charge'] = ConsommationTotaleDeGranule + ConsommationTotaleDeGaz
+        self.PrixTonneDeGranule = PrixTonneDeGranule
+        self.PrixMWh = PrixMWhGaz
+
+        self.ConsommationTonnesGranule = ConsommationTonnesGranule
+        self.ConsommationMWhGaz = ConsommationMWhGaz
+        #On fait le calcul de la consommation individuelle de chauffage en fonction des températures et des prix
+        self.ChargeTotaleDeGranuleDeLaResidence=self.ConsommationTonnesGranule * self.PrixTonneDeGranule
+        self.ChargeTotaleDeGazDeLaResidence=self.ConsommationMWhGaz * self.PrixMWh
+
+        self.ChargeCommuneDeGranule=self.ChargeTotaleDeGranuleDeLaResidence * 0.3
+        self.ChargeCommuneDeGaz=self.ChargeTotaleDeGazDeLaResidence * 0.3
+
+        self.ChargeIndividuelleDeGranule=self.ChargeTotaleDeGranuleDeLaResidence * 0.7 * (self.TemperatureLot - self.TemperatureExterieure) / (self.TemperatureResidence - self.TemperatureExterieure)
+        self.ChargeIndividuelleDeGaz=self.ChargeTotaleDeGazDeLaResidence *0.7 * (self.TemperatureLot - self.TemperatureExterieure) / (self.TemperatureResidence - self.TemperatureExterieure)
+
+        self.DfCharges.loc[self.DfCharges['Postes de provisions'] == "Consommation de chauffage", 'Charge'] = self.ChargeIndividuelleDeGranule + self.ChargeIndividuelleDeGaz
 #
 # Début de l'affiche du site web #
 # 
