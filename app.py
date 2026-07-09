@@ -121,7 +121,9 @@ class CalculateurDeCharges:
 
         #Calcul de la charge pour le copropriétaire
         ChargeCommuneDeGranule=ChargeTotaleDeLaResidence * 0.3
-        ChargeIndividuelle=ChargeTotaleDeLaResidence *0.7 * (self.TemperatureLot - self.TemperatureExterieure) / (self.TemperatureResidence - self.TemperatureExterieure)
+
+        ecartTemperatureResidenceEtExterieur=self.TemperatureResidence - self.TemperatureExterieure
+        ChargeIndividuelle=ChargeTotaleDeLaResidence *0.7 * ((self.TemperatureLot - self.TemperatureExterieure) / ecartTemperatureResidenceEtExterieur if ecartTemperatureResidenceEtExterieur!=0 else 1)
 
         ChargeTotalePourLeLot=ChargeCommuneDeGranule + ChargeIndividuelle
 
@@ -197,19 +199,23 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
         st.markdown(f"<h3 style='text-align: center;'> {row['Postes de provisions']} </h3>",unsafe_allow_html=True)
         st.write(f"{row['Description']}")
         
+        #Cas pour la consommation de chauffage
         if row['TopConsommationDeChauffage']=="X":
             TopTemperature=st.toggle("Paramétrer un scénario de température précis", key=f"toggle_{row['ID prestation']}")
         else:
             TopTemperature=False
 
+        #Si simulation selon températures activées
         if TopTemperature:
             col_temp1, col_temp2, col_temp3 = st.columns(3)
             with col_temp1:
-                temperature_lot = st.slider("Température intérieure des lots sélectionnés (°C)", -10, 60, 19, key="temp_lot")
+                temperature_lot = st.slider("Température intérieure des lots sélectionnés (°C)", -10, 60, 19, key=f"temp_lot_{row['ID prestation']}")
+                consommationUnitaire=st.number_input("Saisissez la consommation d'unité",0,1000,key=f"Conso_{row['ID prestation']}")
             with col_temp2:
-                temperature_exterieure = st.slider("Température à l'extérieur de la résidence (°C)", -10, 60, 19, key="temp_ext")
+                temperature_exterieure = st.slider("Température à l'extérieur de la résidence (°C)", -10, 60, 19, key=f"temp_ext_{row['ID prestation']}")
+                coutUnitaire=st.number_input("Saisissez le coût unitaire",0,1000, key=f"Cout_{row['ID prestation']}")
             with col_temp3:
-                temperature_residence = st.slider("Température moyenne de la résidence (°C)", -10, 60, 19, key="temp_res")
+                temperature_residence = st.slider("Température moyenne de la résidence (°C)", -10, 60, 19, key=f"temp_res_{row['ID prestation']}")
 
             # Appliquer les températures et recalculer les charges par lot
             SimulationEnCours.Etape3aParametrerLesTemperatures(
@@ -217,8 +223,14 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
                 TemperatureExterieure=temperature_exterieure,
                 TemperatureResidence=temperature_residence
             )
+
+            SimulationEnCours.Etape3bCalculerLaConsommationIndividuelleDeChauffage(row["ID prestation"])
+
             SimulationEnCours.Etape2CalculerLesChargesParLot()
+
+
         else:
+            #Valeur définie selon les prestations choisies  
             optionsDePrestations = [prestation for prestation in LstPrestations if prestation.IDPrestation == row['ID prestation']]
             if optionsDePrestations:
                 prestationsSelectionnees = st.multiselect(
@@ -229,6 +241,7 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
                     )
             else:
                 prestationsSelectionnees = []
+
             #Ajout des prestations à la liste des prestations choisies pour le calcul des charges
             prestationsChoisies.extend(prestationsSelectionnees)
             #Calcul de la charge résultant des prestations choisies pour ce poste de provision
