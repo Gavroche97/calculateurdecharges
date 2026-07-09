@@ -9,7 +9,7 @@ class Lot:
     """
     Classe d'objet permettant de définir un lot de copropriété avec ses ID et ses tantièles associés aux subdivisions.
     """
-    def __init__(self,description, IDNotaire, DicoTaxonomieTantiemes: dict[str, float]):
+    def __init__(self,description, IDNotaire, DicoTaxonomieTantiemes: dict):
         self.IDNotaire = IDNotaire
         self.Description = description
         #Créer un dico pour initialiser le tableau des tantièmes
@@ -56,9 +56,11 @@ class CalculateurDeCharges:
         #Créer un dico pour initialiser le tableau des tantièmes
         tableauTantiemesInitialise = {
             'Postes de provisions': [provision.Nom for provision in LstProvisions],
+            'Description':[provision.Description for provision in LstProvisions],
             'ID prestation':[provision.IDPrestation for provision in LstProvisions],
             'ID tantiemes':[provision.IDTantiemes for provision in LstProvisions],
             'Tantiemes': 0,
+            'Charge': 0,
             'Provisions':[provision.Provision for provision in LstProvisions],
         }
         self.DfCharges= pd.DataFrame(tableauTantiemesInitialise)
@@ -87,7 +89,7 @@ class CalculateurDeCharges:
                     CoutReelDuPosteDeProvision += prestation.Cout
             #Si aucune prestation n'est associée à la provision, on prend le coût de la provision
             if CoutReelDuPosteDeProvision==0:
-                CoutReelDuPosteDeProvision=row['Cout']
+                CoutReelDuPosteDeProvision=row['Provisions']
             #On ajoute le coût réel du poste de provision aux charges totales
             self.DfCharges.loc[self.DfCharges['ID prestation'] == row['ID prestation'], 'Charge'] = CoutReelDuPosteDeProvision
 
@@ -130,11 +132,26 @@ class CalculateurDeCharges:
 def ImporterDonneesDeLaResidence():
     DonneesDeLaResidence= pd.read_excel("input.xlsx", sheet_name=["Provisions", "Prestations", "Lots"])
     #Récupérer un dictionnaire de tantièmes pour les lots
-    DicoDeTantiemes = DonneesDeLaResidence["Lots"].drop(columns=['Numéro de lot', 'Description']).to_dict(orient='index')
-    LstLots = [Lot(row["Description"], row["Numéro de lot"],DicoDeTantiemes) for index, row in DonneesDeLaResidence["Lots"].iterrows()]
-    
-    LstProvisions = [Provision(row["Label de la provision"], row["Provision"],row["Description"],row["ID"],row["ID tantiemes"]) for index, row in DonneesDeLaResidence["Provisions"].iterrows()]
-    LstPrestations = [Prestation(row["Label de la prestation"], row["Total TTC"],row["Description"],row["Prestataire"],row["ID prestation"]) for index, row in DonneesDeLaResidence["Prestations"].iterrows()]
+
+    LstLots = [Lot(
+        row["Description"], 
+        row["Numéro de lot"],
+        row.drop(["Numéro de lot", "Description"]).to_dict()
+        ) for index, row in DonneesDeLaResidence["Lots"].iterrows()]    
+    LstProvisions = [Provision(
+        row["Label de la provision"], 
+        row["Provision"],
+        row["Description"],
+        row["ID"],
+        row["ID tantiemes"]
+        ) for index, row in DonneesDeLaResidence["Provisions"].iterrows()]
+    LstPrestations = [Prestation(
+        row["Label de la prestation"], 
+        row["Total TTC"],
+        row["Description"],
+        row["Prestataire"],
+        row["ID prestation"]
+    ) for index, row in DonneesDeLaResidence["Prestations"].iterrows()]
 
     return LstLots, LstProvisions, LstPrestations
 
@@ -148,13 +165,12 @@ st.title("Calculateur de charges de copropriété")
 
 # Un sous-titre
 st.subheader("Ce calculateur permet d'estimer les charges de copropriété en fonction des prestations sélectionnées et des tantièmes des lots choisis")
-st.subheader("Sélectionnez les lots et les prestations pour voir le calcul des charges.")
+st.write("Sélectionnez les lots et les prestations pour voir le calcul des charges.")
 # Un widget interactif : une boîte de saisie de texte
 LstLotsChoisis = st.multiselect(
     "Choisissez un ou plusieurs lots :",
     options=LstLots,
-    format_func=lambda lot: str(lot.IDNotaire)  # On affiche juste le nom dans la liste déroulante
-)
+    format_func=lambda lot: f"🔹 {lot.IDNotaire} - {lot.Description}") 
 
 # Une condition pour afficher un message si le texte est rempli
 if LstLotsChoisis:
@@ -164,6 +180,45 @@ if LstLotsChoisis:
         st.write(f"🔹 {lot.IDNotaire} - {lot.Description}")
 
 #Initialisation du calculateur de charges avec les lots choisis et les provisions
-SimulationEnCours=CalculateurDeCharges(LstLotsChoisis, LstProvisions)
+SimulationEnCours=CalculateurDeCharges(LstLotsChoisis, LstProvisions,10007)
 
+#Initialisation des prestations choisies
+prestationsChoisies = []
 
+#Afficher les provisions et donner l'option de sélectionner une prestation s'il y a en a une
+for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tantiemes'] > 0].iterrows():
+    #Indiquer le poste de provision en gros puis la description en dessous
+    st.subheader(f"**{row['Postes de provisions']}** :")
+    st.write(f"{row['Description']}")
+    
+    optionsDePrestations = [prestation for prestation in LstPrestations if prestation.IDPrestation == row['ID prestation']]
+    if optionsDePrestations:
+        prestationsSelectionnees = st.multiselect(
+                f"Choisissez un ou plusieurs devis pour ce poste",
+                options=optionsDePrestations,
+                format_func=lambda prestation: f"🔹 {prestation.Nom} - {prestation.Prestataire}"
+            )
+    else:
+        prestationsSelectionnees = []
+    #Ajout des prestations à la liste des prestations choisies pour le calcul des charges
+    prestationsChoisies.extend(prestationsSelectionnees)
+    #Calcul de la charge résultant des prestations choisies pour ce poste de provision
+    SimulationEnCours.Etape1ConstruireTableauDeCharges(prestationsChoisies)
+    SimulationEnCours.Etape2CalculerLesChargesParLot()
+    #Récupérer le cout pour les lots
+    coutResidence = SimulationEnCours.DfCharges.loc[SimulationEnCours.DfCharges['ID prestation'] == row['ID prestation'], 'Charge'].iloc[0]
+    coutLots=SimulationEnCours.DfCharges.loc[SimulationEnCours.DfCharges['ID prestation'] == row['ID prestation'], 'Charges pour les lots sélectionnés'].iloc[0]
+
+    #Boucles d'explication des charges
+    col1, col2 = st.columns(2)
+    with col1:
+        for prestation in prestationsSelectionnees:
+            st.write(f"Description de la prestation:")
+            st.write(f"{prestation.Description}")
+    with col2:
+        st.write(f"Coût de la provision : {row['Provisions']} €")
+        st.write(f"Coût de la charge pour la résidence : {coutResidence} €")
+        st.write(f"Les lots sélectionnés corresponent au total à {row['Tantiemes']} tantièmes associés sur {SimulationEnCours.TantiemesTotaux} tantièmes totaux de la résidence.")
+        st.write(f"Le coût de la charge pour les lots sélectionnés est donc de {coutLots:.2f} € par an ou {coutLots/12:.2f} € par mois.")
+        st.write(f"Détail du calcul : {coutLots:.2f} € par an x {row['Tantiemes']} / {SimulationEnCours.TantiemesTotaux} = {coutLots:.2f} € par an.")
+st.dataframe(SimulationEnCours.DfCharges)
