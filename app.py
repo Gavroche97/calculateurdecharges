@@ -1,9 +1,11 @@
 import streamlit as st
 import pandas as pd
 
-TANTIEMES_TOTAUX=10007
-VOLUME_A_CHAUFFER=10142 #M3 à chauffer dans la résidence, estimation par tantieme
-COEFF_ISOLATION=0.5 #0.4 à 0.8 : Très bien isolé (RT2012 / BBC) - 0.9 à 1.1 : Isolation standard (Années 90/2000) - 1.2 à 1.6 : Mal isolé (Passoire thermique).
+#10007 tantiemes au total
+#10142 M3 à chauffer dans la résidence, estimation par tantieme
+#0.4 à 0.8 : Très bien isolé (RT2012 / BBC) - 0.9 à 1.1 : Isolation standard (Années 90/2000) - 1.2 à 1.6 : Mal isolé (Passoire thermique).
+#On suppose que c'est le mododèle Herz Firematic 150 d'une capacité de 150kWh
+#On suppose que c'est le modèle Atlantic Varmax 2 225 d'une capacité de 225kWh
 
 # Commande pour 
 st.set_page_config(
@@ -13,7 +15,20 @@ st.set_page_config(
 ###################################################
 # Classe de Calculateur de charges de copropriété #
 ###################################################
+class Chaudiere:
+    def __init__(self,Label, IDPrestation, PrixkWh, ProductionMaxkWh):
+        self.Nom=Label
+        self.IDPrestation=IDPrestation
+        self.PrixkWh=PrixkWh 
+        self.ProductionMaxkWh=ProductionMaxkWh
 
+class Residence:
+    def __init__(self,Label, TantiemesTotaux, VolumeTotalAChauffer, CoefficientIsolation):
+        self.Nom=Label
+        self.VolumeTotalAChaufferM3=VolumeTotalAChauffer
+        self.TantiemesTotaux=TantiemesTotaux
+        self.CoefficientIsolation=CoefficientIsolation
+    
 class Lot:
     """
     Classe d'objet permettant de définir un lot de copropriété avec ses ID et ses tantièles associés aux subdivisions.
@@ -43,13 +58,12 @@ class Provision:
     """
     Classe d'objet permettant de définir une provision de copropriété avec son nom et son montant associé.
     """ 
-    def __init__(self, Nom, Provision,Description,IDPrestation,IDTantiemes, TopConsommationDeChauffage):
+    def __init__(self, Nom, Provision,Description,IDPrestation,IDTantiemes):
         self.Nom = Nom 
         self.Provision = Provision 
         self.Description = Description
         self.IDPrestation = IDPrestation
         self.IDTantiemes = IDTantiemes
-        self.TopConsommationDeChauffage = TopConsommationDeChauffage
 
 class CalculateurDeCharges:
     """
@@ -57,11 +71,13 @@ class CalculateurDeCharges:
     """
     def __init__(self,LstLot:  list[Lot],
                 LstProvisions: list[Provision], 
-                TantiemesTotaux=10000):
+                LaResidence:Residence,
+                LstChaudieres:list[Chaudiere]):
 
         #Initialiser les attributs de la classe
         self.Lots = LstLot 
-        self.TantiemesTotaux = TantiemesTotaux
+        self.CaracteristiquesDeLaResidence=LaResidence
+        self.ChaudieresDeLaResidence=LstChaudieres
 
         #Créer un dico pour initialiser le tableau des tantièmes
         tableauTantiemesInitialise = {
@@ -69,7 +85,7 @@ class CalculateurDeCharges:
             'Description':[provision.Description for provision in LstProvisions],
             'ID prestation':[provision.IDPrestation for provision in LstProvisions],
             'ID tantiemes':[provision.IDTantiemes for provision in LstProvisions],
-            'TopConsommationDeChauffage': [provision.TopConsommationDeChauffage for provision in LstProvisions],
+            'TopConsommationDeChauffage': [provision.IDPrestation in {chaudiere.IDPrestation for chaudiere in LstChaudieres} for provision in LstProvisions],
             'Tantiemes': 0,
             'Charge': float(0),
             'Provisions':[provision.Provision for provision in LstProvisions],
@@ -109,9 +125,9 @@ class CalculateurDeCharges:
         Méthode permettant de calculer les charges par lot en fonction des tantièmes et des charges totales.
         """
         #Pour chaque tantièmes on calcul les couts
-        self.DfCharges['Charges pour les lots sélectionnés'] = self.DfCharges.Charge * self.DfCharges.Tantiemes / self.TantiemesTotaux
+        self.DfCharges['Charges pour les lots sélectionnés'] = self.DfCharges.Charge * self.DfCharges.Tantiemes / self.CaracteristiquesDeLaResidence.TantiemesTotaux
 
-    def Etape3aParametrerLesTemperatures(self, TemperatureLot=19, TemperatureExterieure=19, TemperatureResidence=19, VolumeEnM3DeLaResidence=10000,CoefficientIsolation=1,NbHeuresDeChauffe=2000):
+    def Etape3aParametrerLesTemperatures(self, TemperatureLot=19, TemperatureExterieure=19, TemperatureResidence=19, NbHeuresDeChauffe=2000):
         """
         Méthode permettant de paramétrer les températures pour le calcul des charges de chauffage.
         La température de la résidence inclue celle des lots sélectionnées, la temperature des lots non sélectionnés n'est pas la température de la résidence 
@@ -122,14 +138,12 @@ class CalculateurDeCharges:
         self.TemperatureResidence = TemperatureResidence
 
         #Paramètres de résidence$
-        self.VolumeAChaufferEnM3=VolumeEnM3DeLaResidence
-        self.CoefficientIsolation=CoefficientIsolation
         self.NombreHeuresDeChauffe=NbHeuresDeChauffe
 
         self.flagPasDeChauffageUtilise=True if max(TemperatureResidence, TemperatureExterieure,TemperatureLot)==TemperatureExterieure else False
 
         #Calcul de la déperdition de chaleur
-        self.PuissanceDeChauffeNecessaireEnWatt=self.VolumeAChaufferEnM3*self.CoefficientIsolation*max(0,(self.TemperatureResidence-self.TemperatureExterieure))
+        self.PuissanceDeChauffeNecessaireEnWatt=self.CaracteristiquesDeLaResidence.VolumeTotalAChaufferM3*self.CaracteristiquesDeLaResidence.CoefficientIsolation*max(0,(self.TemperatureResidence-self.TemperatureExterieure))
         self.PuissanceDeChauffeNecessaireEnKWH=self.NombreHeuresDeChauffe*self.PuissanceDeChauffeNecessaireEnWatt/1000
 
     def Etape3bCalculerLaConsommationIndividuelleDeChauffage (self, IDPrestation,
@@ -157,8 +171,21 @@ class CalculateurDeCharges:
 #Import de données de provision, prestations et tantièmes
 @st.cache_data
 def ImporterDonneesDeLaResidence():
-    DonneesDeLaResidence= pd.read_excel("input.xlsx", sheet_name=["Provisions", "Prestations", "Lots"])
+    DonneesDeLaResidence= pd.read_excel("input.xlsx", sheet_name=["Provisions", "Prestations", "Lots","Residence","Chauffage central"])
     #Récupérer un dictionnaire de tantièmes pour les lots
+    residence = Residence(
+        DonneesDeLaResidence["Residence"].iloc[0]["Label"],
+        DonneesDeLaResidence["Residence"].iloc[0]["Tantiemes totaux"], 
+        DonneesDeLaResidence["Residence"].iloc[0]["Volume à chauffer en m3"],
+        DonneesDeLaResidence["Residence"].iloc[0]["Coefficient d'isolation"],
+        )
+
+    LstChaudieres = [Chaudiere(
+        row["Type de chaudière"], 
+        row["ID poste de provision"],
+        row["Prix unitaire du kWh"],
+        row["Production maximum en kWh"],
+        ) for index, row in DonneesDeLaResidence["Chauffage central"].iterrows()]    
 
     LstLots = [Lot(
         row["Description"], 
@@ -171,8 +198,7 @@ def ImporterDonneesDeLaResidence():
         row["Provision"],
         row["Description"],
         row["ID"],
-        row["ID tantiemes"],
-        row["Top consommation chauffage"]
+        row["ID tantiemes"]
         ) for index, row in DonneesDeLaResidence["Provisions"].iterrows()]
 
     LstPrestations = [Prestation(
@@ -182,10 +208,9 @@ def ImporterDonneesDeLaResidence():
         row["Prestataire"],
         row["ID prestation"]
     ) for index, row in DonneesDeLaResidence["Prestations"].iterrows()]
+    return LstLots, LstProvisions, LstPrestations,residence, LstChaudieres
 
-    return LstLots, LstProvisions, LstPrestations
-
-LstLots, LstProvisions, LstPrestations = ImporterDonneesDeLaResidence()
+LstLots, LstProvisions, LstPrestations,LaResidence, LstChaudieres = ImporterDonneesDeLaResidence()
 ##################################
 # Début de l'affiche du site web 
 ##################################
@@ -210,7 +235,7 @@ if LstLotsChoisis:
         st.write(f"🔹 {lot.IDNotaire} - {lot.Description}")
 
 #Initialisation du calculateur de charges avec les lots choisis et les provisions
-SimulationEnCours=CalculateurDeCharges(LstLotsChoisis, LstProvisions,TANTIEMES_TOTAUX)
+SimulationEnCours=CalculateurDeCharges(LstLotsChoisis, LstProvisions,LaResidence,LstChaudieres)
 #Choix de simuler la consommation de chauffage à partir de la température
 TopTemperature=st.toggle("Paramétrer un scénario de température précis", key=f"toggle_temperature")
 if TopTemperature:
@@ -224,8 +249,7 @@ if TopTemperature:
     with col_nbHeures:
         nbHeuresDeChauffe=st.number_input("Saisissez le nombre d'heures de chauffe",0,10000,2000)
     SimulationEnCours.Etape3aParametrerLesTemperatures(
-        TemperatureLot=temperatureDuLot,TemperatureExterieure=temperatureExterieure,TemperatureResidence=temperatureResidence,
-        VolumeEnM3DeLaResidence= VOLUME_A_CHAUFFER,CoefficientIsolation=COEFF_ISOLATION,NbHeuresDeChauffe= nbHeuresDeChauffe)
+        TemperatureLot=temperatureDuLot,TemperatureExterieure=temperatureExterieure,TemperatureResidence=temperatureResidence,NbHeuresDeChauffe= nbHeuresDeChauffe)
 
 #Initialisation des prestations choisies
 prestationsChoisies = []
@@ -233,7 +257,7 @@ prestationsChoisies = []
 #Afficher les provisions et donner l'option de sélectionner une prestation s'il y a en a une
 for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tantiemes'] > 0].iterrows():
     #Est ce que c'est de la consommation de chauffage
-    TopConsommationDeChauffage=pd.notna(row["TopConsommationDeChauffage"])
+    TopConsommationDeChauffage=row["TopConsommationDeChauffage"]
 
     with st.container(border=True):
         #Indiquer le poste de provision en gros puis la description en dessous
@@ -243,11 +267,7 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
         #Cas pour la consommation de chauffage
         #Si simulation selon températures activées
         if TopTemperature & TopConsommationDeChauffage:
-            col1, col2 = st.columns(2)
-            with col1:
-                consommationUnitaire=st.number_input("Saisissez la consommation d'unité",0,1000,key=f"Conso_{row['ID prestation']}")
-            with col2:
-                coutUnitaire=st.number_input("Saisissez le coût unitaire",0,1000, key=f"Cout_{row['ID prestation']}")
+            #Reprendre ici, faire le calcul du cout residence avec le prix alim de la chaudiere et la consommation avec prise en compte de plafond
             coutResidence=consommationUnitaire*coutUnitaire
             # Recalculer les charges par lot
             SimulationEnCours.Etape3bCalculerLaConsommationIndividuelleDeChauffage(row["ID prestation"],coutUnitaire,consommationUnitaire)
@@ -289,14 +309,14 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
                 st.write(f"Coût de la provision : {row['Provisions']:.2f} €")
                 st.write(f"Coût de la charge pour la résidence : {coutResidence:.2f} €")
                 st.write(f"**Détail du calcul**")
-                st.write(f"Les lots sélectionnés corresponent au total à {row['Tantiemes']:.0f} tantièmes associés sur {SimulationEnCours.TantiemesTotaux} tantièmes totaux de la résidence.")
+                st.write(f"Les lots sélectionnés corresponent au total à {row['Tantiemes']:.0f} tantièmes associés sur {SimulationEnCours.CaracteristiquesDeLaResidence.TantiemesTotaux} tantièmes totaux de la résidence.")
                 if not(TopConsommationDeChauffage) or not(TopTemperature):
-                    st.latex(f"{coutResidence:.0f}\\times \\frac{{{row['Tantiemes']:.0f}}}{{{SimulationEnCours.TantiemesTotaux}}} = {coutLots:.2f}\\text{{ €/an}}")
+                    st.latex(f"{coutResidence:.0f}\\times \\frac{{{row['Tantiemes']:.0f}}}{{{SimulationEnCours.CaracteristiquesDeLaResidence.TantiemesTotaux}}} = {coutLots:.2f}\\text{{ €/an}}")
                 elif SimulationEnCours.flagPasDeChauffageUtilise:
                     st.write(f"La température extérieure est supérieure à la température dans les lots sélectionnées et dans la résidence, donc il n'y a pas de consommation de chauffage.")
                 else:
-                    st.latex(f"{coutResidence:.0f} \\times \\frac{{{row['Tantiemes']:.0f}}}{{{SimulationEnCours.TantiemesTotaux}}} \\times \\left( 30\\% + 70\\% \\times \\frac{{{SimulationEnCours.TemperatureLot}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}}{{{SimulationEnCours.TemperatureResidence}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}} \\right) = {coutLots:.2f}\\text{{ €/an}}")
+                    st.latex(f"{coutResidence:.0f} \\times \\frac{{{row['Tantiemes']:.0f}}}{{{SimulationEnCours.CaracteristiquesDeLaResidence.TantiemesTotaux}}} \\times \\left( 30\\% + 70\\% \\times \\frac{{{SimulationEnCours.TemperatureLot}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}}{{{SimulationEnCours.TemperatureResidence}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}} \\right) = {coutLots:.2f}\\text{{ €/an}}")
                 st.write(f"Le coût de la charge pour les lots sélectionnés est donc de {coutLots:.2f} € par an ou {coutLots/12:.2f} € par mois.")
 
 #Afficher tableau des charges                    
-st.dataframe(SimulationEnCours.DfCharges.drop(columns=['ID prestation', 'ID tantiemes','Description','TopConsommationDeChauffage']))
+st.dataframe(SimulationEnCours.DfCharges.drop(columns=['ID prestation', 'ID tantiemes','Description']))
