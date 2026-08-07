@@ -16,11 +16,12 @@ st.set_page_config(
 # Classe de Calculateur de charges de copropriété #
 ###################################################
 class Chaudiere:
-    def __init__(self,Label, IDPrestation, PrixkWh, ProductionMaxkWh):
+    def __init__(self,Label, IDPrestation, PrixkWh, ProductionMaxkWh,Ordre):
         self.Nom=Label
         self.IDPrestation=IDPrestation
         self.PrixkWh=PrixkWh 
         self.ProductionMaxkWh=ProductionMaxkWh
+        self.OrdreUtilisation=Ordre
 
 class Residence:
     def __init__(self,Label, TantiemesTotaux, VolumeTotalAChauffer, CoefficientIsolation):
@@ -125,7 +126,7 @@ class CalculateurDeCharges:
         Méthode permettant de calculer les charges par lot en fonction des tantièmes et des charges totales.
         """
         #Pour chaque tantièmes on calcul les couts
-        self.DfCharges['Charges pour les lots sélectionnés'] = self.DfCharges.Charge * self.DfCharges.Tantiemes / self.CaracteristiquesDeLaResidence.TantiemesTotaux
+        self.DfCharges['Charges pour les lots sélectionnés'] = (self.DfCharges.Charge * self.DfCharges.Tantiemes) / self.CaracteristiquesDeLaResidence.TantiemesTotaux
 
     def Etape3aParametrerLesTemperatures(self, TemperatureLot=19, TemperatureExterieure=19, TemperatureResidence=19, NbHeuresDeChauffe=2000):
         """
@@ -147,7 +148,7 @@ class CalculateurDeCharges:
         self.PuissanceDeChauffeNecessaireEnKWH=self.NombreHeuresDeChauffe*self.PuissanceDeChauffeNecessaireEnWatt/1000
 
     def Etape3bCalculerLaConsommationIndividuelleDeChauffage (self, IDPrestation,
-                Prixunitaire=500,#Biomasse: 392 pour CRAM, 392 pour PROCHALOR 
+                Prixunitaire=500,#Biomasse: 392 pour CRAM, 500 pour PROCHALOR 
                 ConsommationUnitaire=40):
         """
         Méthode permettant d'inclure la consommation individuelle de chauffage dans le calcul des charges par lot.
@@ -185,7 +186,8 @@ def ImporterDonneesDeLaResidence():
         row["ID poste de provision"],
         row["Prix unitaire du kWh"],
         row["Production maximum en kWh"],
-        ) for index, row in DonneesDeLaResidence["Chauffage central"].iterrows()]    
+        row["Ordre d'utilisation"]
+        ) for index, row in DonneesDeLaResidence["Chauffage central"].iterrows() if isinstance(row["Ordre d'utilisation"],(float,int))]    
 
     LstLots = [Lot(
         row["Description"], 
@@ -267,8 +269,30 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
         #Cas pour la consommation de chauffage
         #Si simulation selon températures activées
         if TopTemperature & TopConsommationDeChauffage:
-            #Reprendre ici, faire le calcul du cout residence avec le prix alim de la chaudiere et la consommation avec prise en compte de plafond
-            coutResidence=consommationUnitaire*coutUnitaire
+            #Récupérer la chaudière associée à l'ID prestation
+            ChaudiereAssociee=None
+            for chaudiere in SimulationEnCours.ChaudieresDeLaResidence:
+                if chaudiere.IDPrestation==row["ID prestation"]:
+                    ChaudiereAssociee=chaudiere
+                    break
+            
+            #Récupérer la puissance de chauffe associée par rapport à l'ordre d'utilisation
+            if ChaudiereAssociee==None:
+                st.write("Pas de chaudière associée, revoir le modèle relationnel")
+                coutUnitaire=0
+                consommationUnitaire=0
+            else:
+                coutUnitaire=ChaudiereAssociee.PrixkWh
+
+                PuissanceDeChauffeRestante=SimulationEnCours.PuissanceDeChauffeNecessaireEnKWH
+                for ordre in range(-1,ChaudiereAssociee.OrdreUtilisation-1):
+                    for chaudiere in SimulationEnCours.ChaudieresDeLaResidence:
+                        if chaudiere.OrdreUtilisation==ordre:
+                            PuissanceDeChauffeRestante-chaudiere.ProductionMaxkWh
+                
+                consommationUnitaire=min(ChaudiereAssociee.ProductionMaxkWh,PuissanceDeChauffeRestante)
+
+
             # Recalculer les charges par lot
             SimulationEnCours.Etape3bCalculerLaConsommationIndividuelleDeChauffage(row["ID prestation"],coutUnitaire,consommationUnitaire)
             prestationsSelectionnees = []
@@ -297,14 +321,14 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
         coutLots=SimulationEnCours.DfCharges.loc[SimulationEnCours.DfCharges['ID prestation'] == row['ID prestation'], 'Charges pour les lots sélectionnés'].iloc[0]
         
         #Boucles d'explication des charges
-        col1, col2 = st.columns(2)
-        with col1:
+        colPrestation, colSynthese = st.columns(2)
+        with colPrestation:
             for prestation in prestationsSelectionnees:
                 with st.container(border=True):
                     st.write(f"**{prestation.Nom}**")
                     st.write(f"Prestataire: **_{prestation.Prestataire}_**")
                     st.write(f"Description: {prestation.Description}")
-        with col2:
+        with colSynthese:
             with st.container(border=True):
                 st.write(f"Coût de la provision : {row['Provisions']:.2f} €")
                 st.write(f"Coût de la charge pour la résidence : {coutResidence:.2f} €")
