@@ -16,11 +16,12 @@ st.set_page_config(
 # Classe de Calculateur de charges de copropriété #
 ###################################################
 class Chaudiere:
-    def __init__(self,Label, IDPrestation, PrixkWh, ProductionMaxkWh,Ordre):
+    def __init__(self,Label, IDPrestation, PrixkWh, ProductionMaxkW,Ordre):
         self.Nom=Label
         self.IDPrestation=IDPrestation
         self.PrixkWh=PrixkWh 
-        self.ProductionMaxkWh=ProductionMaxkWh
+        self.ProductionMaxkW=ProductionMaxkW
+        self.PuissanceUtilisee=0
         self.OrdreUtilisation=Ordre
 
 class Residence:
@@ -78,7 +79,11 @@ class CalculateurDeCharges:
         #Initialiser les attributs de la classe
         self.Lots = LstLot 
         self.CaracteristiquesDeLaResidence=LaResidence
-        self.ChaudieresDeLaResidence=LstChaudieres
+        self.ChaudieresDeLaResidence=sorted(LstChaudieres, key=lambda chaudiere: (chaudiere.OrdreUtilisation if chaudiere.OrdreUtilisation is not None else 999))
+
+        self.TemperatureLot = 1
+        self.TemperatureExterieure = 1
+        self.TemperatureResidence=1
 
         #Créer un dico pour initialiser le tableau des tantièmes
         tableauTantiemesInitialise = {
@@ -98,38 +103,39 @@ class CalculateurDeCharges:
             self.DfCharges['Tantiemes'] += self.DfCharges['ID tantiemes'].map(
                 lot.DfTantiemes.set_index('Label des subdivisions')['Tantiemes']).fillna(0)
 
-    def Etape1ConstruireTableauDeCharges (self, LstPrestationsSelectionnees: list[Prestation]):
+    def Etape1aConstruireTableauDeCharges (self,IDPrestation, LstPrestationsSelectionnees: list[Prestation]):
         """
         Méthode permettant de calculer les charges totales de copropriété en fonction des prestations et des provisions.
         """
         #Sauvegarder la liste de prestations sélectionnées
-        self.PrestationsSelectionnees = LstPrestationsSelectionnees
+        self.PrestationsSelectionnees = LstPrestationsSelectionnees 
         #Réinitialiser les charges à 0
-        self.DfCharges['Charge'] = float(0)
+        self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charge'] = float(0)
 
-        #Itération pour calculer les charges totales
-        for index, row in self.DfCharges.iterrows():
-            IDPrestationActuelle=row['ID prestation']
-            CoutReelDuPosteDeProvision = 0
-            #Pour chaque provision on checke si on a des prestations associées
-            for prestation in self.PrestationsSelectionnees:
-                #S'il y a des prestations associées à la provision, on ajoute le coût de la prestation aux charges totales
-                if prestation.IDPrestation ==IDPrestationActuelle:
-                    CoutReelDuPosteDeProvision += prestation.Cout
-            #Si aucune prestation n'est associée à la provision, on prend le coût de la provision
-            if CoutReelDuPosteDeProvision==0:
-                CoutReelDuPosteDeProvision=row['Provisions']
-            #On ajoute le coût réel du poste de provision aux charges totales
-            self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestationActuelle, 'Charge'] = CoutReelDuPosteDeProvision
+        #Calculer les charges totales
+        CoutReelDuPosteDeProvision = 0
+        #Pour chaque provision on checke si on a des prestations associées
+        for prestation in self.PrestationsSelectionnees:
+            #On ajoute le coût de la prestation aux charges totales
+            CoutReelDuPosteDeProvision += prestation.Cout
+        #Si aucune prestation n'est associée à la provision, on prend le coût de la provision
+        if CoutReelDuPosteDeProvision==0:
+            CoutReelDuPosteDeProvision=row['Provisions']
+        #On ajoute le coût réel du poste de provision aux charges totales
+        self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charge'] = CoutReelDuPosteDeProvision
 
-    def Etape2CalculerLesChargesParLot (self):
+    def Etape2CalculerLesChargesParLot (self,topScenarioDeTemperature=False):
         """
         Méthode permettant de calculer les charges par lot en fonction des tantièmes et des charges totales.
         """
         #Pour chaque tantièmes on calcul les couts
-        self.DfCharges['Charges pour les lots sélectionnés'] = (self.DfCharges.Charge * self.DfCharges.Tantiemes) / self.CaracteristiquesDeLaResidence.TantiemesTotaux
+        if topScenarioDeTemperature:
+            self.DfCharges.loc[self.DfCharges['TopConsommationDeChauffage']==True,'Charges pour les lots sélectionnés'] = (self.DfCharges.Charge.loc[self.DfCharges['TopConsommationDeChauffage']==True] * self.DfCharges.Tantiemes.loc[self.DfCharges['TopConsommationDeChauffage']==True]) / self.CaracteristiquesDeLaResidence.TantiemesTotaux * (0.3 + 0.7 * (self.TemperatureLot - self.TemperatureExterieure) / max(0.001, (self.TemperatureResidence - self.TemperatureExterieure)))
+            self.DfCharges.loc[self.DfCharges['TopConsommationDeChauffage']==False,'Charges pour les lots sélectionnés'] = (self.DfCharges.Charge.loc[self.DfCharges['TopConsommationDeChauffage']==False] * self.DfCharges.Tantiemes.loc[self.DfCharges['TopConsommationDeChauffage']==False] ) / self.CaracteristiquesDeLaResidence.TantiemesTotaux
+        else:
+            self.DfCharges.loc[:,'Charges pour les lots sélectionnés'] = (self.DfCharges.Charge * self.DfCharges.Tantiemes) / self.CaracteristiquesDeLaResidence.TantiemesTotaux
 
-    def Etape3aParametrerLesTemperatures(self, TemperatureLot=19, TemperatureExterieure=19, TemperatureResidence=19, NbHeuresDeChauffe=2000):
+    def Etape1bParametrerLesTemperatures(self, TemperatureLot=19, TemperatureExterieure=19, TemperatureResidence=19, NbHeuresDeChauffe=2000):
         """
         Méthode permettant de paramétrer les températures pour le calcul des charges de chauffage.
         La température de la résidence inclue celle des lots sélectionnées, la temperature des lots non sélectionnés n'est pas la température de la résidence 
@@ -148,27 +154,21 @@ class CalculateurDeCharges:
         self.PuissanceDeChauffeNecessaireEnWatt=self.CaracteristiquesDeLaResidence.VolumeTotalAChaufferM3*self.CaracteristiquesDeLaResidence.CoefficientIsolation*max(0,(self.TemperatureResidence-self.TemperatureExterieure))
         self.PuissanceDeChauffeNecessaireEnKWH=self.NombreHeuresDeChauffe*self.PuissanceDeChauffeNecessaireEnWatt/1000
 
-    def Etape3bCalculerLaConsommationIndividuelleDeChauffage (self, IDPrestation,
-                Prixunitaire=500,#Biomasse: 392 pour CRAM, 500 pour PROCHALOR 
-                ConsommationUnitaire=40):
-        """
-        Méthode permettant d'inclure la consommation individuelle de chauffage dans le calcul des charges par lot.
-        """
-        #Calcul de la charge totale pour la résidence
-        ChargeTotaleDeLaResidence=ConsommationUnitaire * Prixunitaire
+        #Calcul des charges pour chaque chaudière en fonction de l'ordre d'utilisation
+        ###Initialisation de la puissance de chauffe restante à distribuer entre les chaudières
+        puissanceDeChauffeRestante=self.PuissanceDeChauffeNecessaireEnKWH
+        for chaudiere in self.ChaudieresDeLaResidence:
+            #Calcul de la puissance de chauffe utilisée pour cette chaudière
+            puissanceDeChauffeUtiliseeEnkWh=min(chaudiere.ProductionMaxkW*self.NombreHeuresDeChauffe, puissanceDeChauffeRestante)
+            chaudiere.PuissanceUtiliseeEnkWh=puissanceDeChauffeUtiliseeEnkWh
+            #Calcul du coût de la charge pour cette chaudière
+            coutDeLaCharge=puissanceDeChauffeUtiliseeEnkWh*chaudiere.PrixkWh
 
-        #Calcul de la charge pour le copropriétaire
-        ChargeCommune=ChargeTotaleDeLaResidence * 0.3 
-
-        ecartTemperatureResidenceEtExterieur=self.TemperatureResidence - self.TemperatureExterieure
-
-        ChargeIndividuelle=ChargeTotaleDeLaResidence *0.7 * max(0,((self.TemperatureLot - self.TemperatureExterieure) / ecartTemperatureResidenceEtExterieur if ecartTemperatureResidenceEtExterieur!=0 else 1))
-
-        ChargeTotaleAvantTantiemes=(ChargeCommune + ChargeIndividuelle)*self.NombreHeuresDeChauffe
-
-        #Mise à jour dans le tableau des charges
-        self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charge'] =  (not self.flagPasDeChauffageUtilise) * ChargeTotaleAvantTantiemes
-        self.Etape2CalculerLesChargesParLot()
+            #Mise à jour dans le tableau des charges
+            self.DfCharges.loc[self.DfCharges['ID prestation'] == chaudiere.IDPrestation, 'Charge'] =  (not self.flagPasDeChauffageUtilise) * coutDeLaCharge
+            
+            #Mise à jour de la puissance de chauffe restante
+            puissanceDeChauffeRestante-=puissanceDeChauffeUtiliseeEnkWh
 
 #Import de données de provision, prestations et tantièmes
 @st.cache_data
@@ -186,7 +186,7 @@ def ImporterDonneesDeLaResidence():
         row["Type de chaudière"], 
         row["ID poste de provision"],
         row["Prix unitaire du kWh"],
-        row["Production maximum en kWh"],
+        row["Production maximum en kW"],
         row["Ordre d'utilisation"]
         ) for index, row in DonneesDeLaResidence["Chauffage central"].iterrows() if isinstance(row["Ordre d'utilisation"],(float,int))]    
 
@@ -244,15 +244,24 @@ TopTemperature=st.toggle("Paramétrer un scénario de température précis", key
 if TopTemperature:
     col_temp1, col_temp2, col_temp3, col_nbHeures = st.columns(4)
     with col_temp1:
-        temperatureExterieure = st.slider("Température à l'extérieur de la résidence (°C)", -10, 25, 20, key=f"temp_ext")
+        temperatureExterieure = st.slider("Température à l'extérieur de la résidence (°C)", -100, 25, 20, key=f"temp_ext")
     with col_temp2:
         temperatureDuLot = st.slider("Température intérieure des lots (°C)", 0, 25, 25, key=f"temp_lot")
     with col_temp3:
         temperatureResidence = st.slider("Température moyenne de la résidence (°C)", 0, 25, 25, key=f"temp_res")
     with col_nbHeures:
         nbHeuresDeChauffe=st.number_input("Saisissez le nombre d'heures de chauffe",0,10000,2000)
-    SimulationEnCours.Etape3aParametrerLesTemperatures(
+    SimulationEnCours.Etape1bParametrerLesTemperatures(
         TemperatureLot=temperatureDuLot,TemperatureExterieure=temperatureExterieure,TemperatureResidence=temperatureResidence,NbHeuresDeChauffe= nbHeuresDeChauffe)
+    
+    with st.expander("Voir les paramètres de température et de chauffage"):
+        with st.container(border=True):
+            st.write(f"Puissance de chauffe nécessaire pour la résidence : {SimulationEnCours.PuissanceDeChauffeNecessaireEnWatt:.0f} W soit {SimulationEnCours.PuissanceDeChauffeNecessaireEnKWH:.0f} kWh")
+            st.write(f"Paramètres des chaudières :")
+            for chaudiere in SimulationEnCours.ChaudieresDeLaResidence:
+                st.write(f"**Chaudière : {chaudiere.Nom}**")
+                st.write(f"- Production max. {chaudiere.ProductionMaxkW} kW, Prix: {chaudiere.PrixkWh:.4f} €/kWh")
+                st.write(f"- Puissance utilisée : {chaudiere.PuissanceUtiliseeEnkWh:.2f} kWh (Taux d'utilisation: {((chaudiere.PuissanceUtiliseeEnkWh/SimulationEnCours.NombreHeuresDeChauffe)/chaudiere.ProductionMaxkW)*100:.0f}%), Coût de la charge : {chaudiere.PuissanceUtiliseeEnkWh*chaudiere.PrixkWh:.2f} €")
 
 #Initialisation des prestations choisies
 prestationsChoisies = []
@@ -270,37 +279,7 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
         
         #Cas pour la consommation de chauffage
         #Si simulation selon températures activées
-        if TopTemperature & TopConsommationDeChauffage:
-            #Récupérer la chaudière associée à l'ID prestation
-            ChaudiereAssociee=None
-            for chaudiere in SimulationEnCours.ChaudieresDeLaResidence:
-                if chaudiere.IDPrestation==IDPrestationActuel:
-                    ChaudiereAssociee=chaudiere
-                    break
-            
-            #Récupérer la puissance de chauffe associée par rapport à l'ordre d'utilisation
-            if ChaudiereAssociee==None:
-                st.write("Pas de chaudière associée, revoir le modèle relationnel")
-                coutUnitaire=0
-                consommationUnitaire=0
-            else:
-                coutUnitaire=ChaudiereAssociee.PrixkWh
-
-                PuissanceDeChauffeRestante=SimulationEnCours.PuissanceDeChauffeNecessaireEnKWH
-                for ordre in range(-1,ChaudiereAssociee.OrdreUtilisation-1):
-                    for chaudiere in SimulationEnCours.ChaudieresDeLaResidence:
-                        if int(chaudiere.OrdreUtilisation)==ordre:
-                            PuissanceDeChauffeRestante-chaudiere.ProductionMaxkWh
-                            if PuissanceDeChauffeRestante<0:
-                                PuissanceDeChauffeRestante=0
-                
-                consommationUnitaire=min(ChaudiereAssociee.ProductionMaxkWh,PuissanceDeChauffeRestante)
-
-
-            # Recalculer les charges par lot
-            SimulationEnCours.Etape3bCalculerLaConsommationIndividuelleDeChauffage(IDPrestationActuel,coutUnitaire,consommationUnitaire)
-            prestationsSelectionnees = []
-        else:
+        if not(TopTemperature & TopConsommationDeChauffage):
             #Valeur définie selon les prestations choisies  
             optionsDePrestations = [prestation for prestation in LstPrestations if prestation.IDPrestation == IDPrestationActuel]
             if optionsDePrestations:
@@ -310,15 +289,15 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
                         format_func=lambda prestation: f"🔹 {prestation.Nom} - {prestation.Prestataire}",
                         key=f"prestations_{IDPrestationActuel}"
                     )
+                #Ajout des prestations à la liste des prestations choisies pour le calcul des charges
+                prestationsChoisies.extend(prestationsSelectionnees)
             else:
-                prestationsSelectionnees = []
-
-            #Ajout des prestations à la liste des prestations choisies pour le calcul des charges
-            prestationsChoisies.extend(prestationsSelectionnees)
+                prestationsSelectionnees=[]
+        
             #Calcul de la charge résultant des prestations choisies pour ce poste de provision
-            SimulationEnCours.Etape1ConstruireTableauDeCharges(prestationsChoisies)
-        #Intégrer les charge dans le tableau des charges
-        SimulationEnCours.Etape2CalculerLesChargesParLot()
+            SimulationEnCours.Etape1aConstruireTableauDeCharges(IDPrestationActuel, prestationsSelectionnees)
+        #Intégrer les charge dans le tableau des charges 
+        SimulationEnCours.Etape2CalculerLesChargesParLot(TopTemperature)
         
         #Récupérer le cout pour les lots
         coutResidence = SimulationEnCours.DfCharges.loc[SimulationEnCours.DfCharges['ID prestation'] == IDPrestationActuel, 'Charge'].iloc[0]
@@ -348,3 +327,7 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
 
 #Afficher tableau des charges                    
 st.dataframe(SimulationEnCours.DfCharges.drop(columns=['ID prestation', 'ID tantiemes','Description']))
+
+#Afficher les charges annuelles et mensuelles totales pour les lots sélectionnés
+st.write(f"**Total des charges annuelles pour les lots sélectionnés : {SimulationEnCours.DfCharges['Charges pour les lots sélectionnés'].sum():.2f} €**")
+st.write(f"**Total des charges mensuelles pour les lots sélectionnés : {SimulationEnCours.DfCharges['Charges pour les lots sélectionnés'].sum()/12:.2f} €**")
