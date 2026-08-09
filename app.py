@@ -28,15 +28,14 @@ class Chaudiere:
         self.Description=description
 
 class Residence:
-    def __init__(self,Label, TantiemesTotaux, VolumeTotalAChauffer, CoefficientIsolation):
+    def __init__(self,Label, VolumeTotalAChauffer, CoefficientIsolation):
         self.Nom=Label
         self.VolumeTotalAChaufferM3=VolumeTotalAChauffer
-        self.TantiemesTotaux=TantiemesTotaux
         self.CoefficientIsolation=CoefficientIsolation
     
 class Lot:
     """
-    Classe d'objet permettant de définir un lot de copropriété avec ses ID et ses tantièles associés aux subdivisions.
+    Classe d'objet permettant de définir un lot de copropriété avec ses ID et ses tantièmes associés aux subdivisions.
     """
     def __init__(self,description, IDNotaire, DicoTaxonomieTantiemes: dict):
         self.IDNotaire = IDNotaire
@@ -64,7 +63,7 @@ class Provision:
     """
     Classe d'objet permettant de définir une provision de copropriété avec son nom et son montant associé.
     """ 
-    def __init__(self, Nom, Provision,Description,IDPrestation,IDTantiemes,descriptionLongue=None):
+    def __init__(self, Nom, Provision,Description,IDPrestation,IDTantiemes,descriptionLongue):
         self.Nom = Nom 
         self.Provision = Provision 
         self.Description = Description
@@ -94,13 +93,15 @@ class CalculateurDeCharges:
         tableauTantiemesInitialise = {
             'Postes de provisions': [provision.Nom for provision in LstProvisions],
             'Description':[provision.Description for provision in LstProvisions],
+            'Description longue':[provision.DescriptionLongue for provision in LstProvisions],  
             'ID prestation':[provision.IDPrestation for provision in LstProvisions],
             'ID tantiemes':[provision.IDTantiemes for provision in LstProvisions],
             'TopConsommationDeChauffage': [provision.IDPrestation in {chaudiere.IDPrestation for chaudiere in LstChaudieres} for provision in LstProvisions],
             'Tantiemes': 0,
             'Charge': float(0),
             'Provisions':[provision.Provision for provision in LstProvisions],
-            'Charges pour les lots sélectionnés': float(0)
+            'Charges pour les lots sélectionnés': float(0),
+            'Tantiemes totaux': [[lot.DfTantiemes.loc[lot.DfTantiemes['Label des subdivisions']==provision.IDTantiemes,'Tantiemes'] for lot in LstLot].sum() for provision in LstProvisions]
         }
         self.DfCharges= pd.DataFrame(tableauTantiemesInitialise).sort_values(by='Provisions', ascending=False)
 
@@ -118,7 +119,7 @@ class CalculateurDeCharges:
         #Réinitialiser les charges à 0
         self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charge'] = float(0)
 
-        #Calculer les charges totales
+        #Calculer les charges totales 
         CoutReelDuPosteDeProvision = 0
         #Pour chaque provision on checke si on a des prestations associées
         for prestation in self.PrestationsSelectionnees:
@@ -183,7 +184,6 @@ def ImporterDonneesDeLaResidence():
     #Récupérer un dictionnaire de tantièmes pour les lots
     residence = Residence(
         DonneesDeLaResidence["Residence"].iloc[0]["Label"],
-        DonneesDeLaResidence["Residence"].iloc[0]["Tantiemes totaux"], 
         DonneesDeLaResidence["Residence"].iloc[0]["Volume à chauffer en m3"],
         DonneesDeLaResidence["Residence"].iloc[0]["Coefficient d'isolation"],
         )
@@ -222,7 +222,7 @@ def ImporterDonneesDeLaResidence():
     ) for index, row in DonneesDeLaResidence["Prestations"].iterrows()]
     return LstLots, LstProvisions, LstPrestations,residence, LstChaudieres
 
-LstLots, LstProvisions, LstPrestations,LaResidence, LstChaudieres = ImporterDonneesDeLaResidence()
+
 ##################################
 # Début de l'affiche du site web 
 ##################################
@@ -241,13 +241,16 @@ st.title("Calculateur de charges de copropriété")
 st.subheader("1. Sélection des lots",anchor="section-1")
 
 st.write("Ce calculateur permet d'estimer les charges de copropriété en fonction des prestations sélectionnées et des tantièmes des lots choisis. Sélectionnez les lots et les prestations pour voir le calcul des charges:")
+
+
+LstLots, LstProvisions, LstPrestations,LaResidence, LstChaudieres = ImporterDonneesDeLaResidence()
 # Un widget interactif : une boîte de saisie de texte
 LstLotsChoisis = st.multiselect(
     "Lots de la résidence à inclure dans le calcul des charges",
     options=LstLots,
     format_func=lambda lot: f"🔹 {lot.IDNotaire} - {lot.Description}") 
 
-# Une condition pour afficher un message si le texte est rempli
+# Une condition pour afficher un message si le texte est rempli 
 if LstLotsChoisis:
     st.write("**Vous avez sélectionné les lots suivants :**")
     for lot in LstLotsChoisis:
@@ -293,76 +296,78 @@ if SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tantiemes'] > 0].emp
 else:
     st.write("Pour chaque poste de provision, vous pouvez sélectionner une ou plusieurs prestations:")
 
-TopIndicateurProvInfA500,TopIndicateurProvInfA1500=False,False
+TopIndicateurProvInfA500,TopIndicateurProvInfA1500,TopIndicateurProvSupA1500=False,False,False
 for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tantiemes'] > 0].iterrows():
     IDPrestationActuel=row["ID prestation"]
     MontantProvision=row["Provisions"]
-
-    #Est ce que c'est de la consommation de chauffage
     TopConsommationDeChauffage=row["TopConsommationDeChauffage"]
 
-    if MontantProvision<=500 and not TopIndicateurProvInfA500:
-        TopIndicateurProvInfA500=True
-        st.write("**Les provisions suivantes sont inférieures à 500€HT par an, le syndic n'a plus l'obligation de consulter le conseil syndical.**")
+    #Affichage des règles selon le montant de la provision
+    if MontantProvision>1500 and not TopIndicateurProvSupA1500:
+        TopIndicateurProvSupA1500=True
+        st.write("**Les provisions suivantes sont supérieures à 1500€HT par an, le syndic est dans l'obligation de mettre en concurrence les fournisseurs et de consulter le conseil syndical.**")
     if MontantProvision<=1500 and not TopIndicateurProvInfA1500:
         TopIndicateurProvInfA1500=True
         st.write("**Les provisions suivantes sont inférieures à 1500€HT par an, le syndic n'est plus dans l'obligation de mettre en concurrence les fournisseurs.**")
-
+    if MontantProvision<=500 and not TopIndicateurProvInfA500:
+        TopIndicateurProvInfA500=True
+        st.write("**Les provisions suivantes sont inférieures à 500€HT par an, le syndic n'a plus l'obligation de consulter le conseil syndical.**")
+    
     with st.expander(f"**{row['Postes de provisions']} - Provision: {MontantProvision:.0f}€/an**"):
-            #Indiquer le poste de provision en gros puis la description en dessous
-            st.markdown(f"<h3 style='text-align: center;'> {row['Postes de provisions']} </h3>",unsafe_allow_html=True)
-            st.write(f"{row['Description']}")
-            st.write(f"{row['DescriptionLongue']}")
+        #Indiquer le poste de provision en gros puis la description en dessous
+        st.markdown(f"<h3 style='text-align: center;'> {row['Postes de provisions']} </h3>",unsafe_allow_html=True)
 
-            #Cas pour la consommation de chauffage
-            #Si simulation selon températures activées
-            if not(TopTemperature & TopConsommationDeChauffage):
-                #Valeur définie selon les prestations choisies  
-                optionsDePrestations = [prestation for prestation in LstPrestations if prestation.IDPrestation == IDPrestationActuel]
-                prestationsEnCours = [prestation for prestation in optionsDePrestations if prestation.TopPrestationChoisie]
-                if optionsDePrestations:
-                    prestationsSelectionnees = st.multiselect(
-                            f"Choisissez un ou plusieurs devis pour ce poste",
-                            options=optionsDePrestations,
-                            format_func=lambda prestation: f"🔹 {prestation.Nom} - {prestation.Prestataire}",
-                            key=f"prestations_{IDPrestationActuel}",
-                            default=prestationsEnCours
-                        )
-                    #Ajout des prestations à la liste des prestations choisies pour le calcul des charges
-                    prestationsChoisies.extend(prestationsSelectionnees)
-                else:
-                    prestationsSelectionnees=[]
-            
-                #Calcul de la charge résultant des prestations choisies pour ce poste de provision
-                SimulationEnCours.Etape1aConstruireTableauDeCharges(IDPrestationActuel, prestationsSelectionnees)
-            #Intégrer les charge dans le tableau des charges 
-            SimulationEnCours.Etape2CalculerLesChargesParLot(TopTemperature)
-            
-            #Récupérer le cout pour les lots
-            coutResidence = SimulationEnCours.DfCharges.loc[SimulationEnCours.DfCharges['ID prestation'] == IDPrestationActuel, 'Charge'].iloc[0]
-            coutLots=SimulationEnCours.DfCharges.loc[SimulationEnCours.DfCharges['ID prestation'] == IDPrestationActuel, 'Charges pour les lots sélectionnés'].iloc[0]
-            
-            #Boucles d'explication des charges
-            colPrestation, colSynthese = st.columns(2)
-            with colPrestation:
-                for prestation in prestationsSelectionnees:
-                    with st.container(border=True):
-                        st.write(f"**{prestation.Nom}**")
-                        st.write(f"Prestataire: **_{prestation.Prestataire}_**")
-                        st.write(f"Description: {prestation.Description}")
-            with colSynthese:
+        #Cas pour la consommation de chauffage
+        #Si simulation selon températures activées
+        if not(TopTemperature & TopConsommationDeChauffage):
+            #Valeur définie selon les prestations choisies  
+            optionsDePrestations = [prestation for prestation in LstPrestations if prestation.IDPrestation == IDPrestationActuel]
+            prestationsEnCours = [prestation for prestation in optionsDePrestations if prestation.TopPrestationChoisie]
+            if optionsDePrestations:
+                prestationsSelectionnees = st.multiselect(
+                        f"Choisissez un ou plusieurs devis pour ce poste",
+                        options=optionsDePrestations,
+                        format_func=lambda prestation: f"🔹 {prestation.Nom} - {prestation.Prestataire} - {prestation.Cout:.2f} €/an",
+                        key=f"prestations_{IDPrestationActuel}",
+                        default=prestationsEnCours
+                    )
+                #Ajout des prestations à la liste des prestations choisies pour le calcul des charges
+                prestationsChoisies.extend(prestationsSelectionnees)
+            else:
+                prestationsSelectionnees=[]
+        
+            #Calcul de la charge résultant des prestations choisies pour ce poste de provision
+            SimulationEnCours.Etape1aConstruireTableauDeCharges(IDPrestationActuel, prestationsSelectionnees)
+        #Intégrer les charge dans le tableau des charges 
+        SimulationEnCours.Etape2CalculerLesChargesParLot(TopTemperature)
+        
+        #Récupérer le cout pour les lots
+        coutResidence = SimulationEnCours.DfCharges.loc[SimulationEnCours.DfCharges['ID prestation'] == IDPrestationActuel, 'Charge'].iloc[0]
+        coutLots=SimulationEnCours.DfCharges.loc[SimulationEnCours.DfCharges['ID prestation'] == IDPrestationActuel, 'Charges pour les lots sélectionnés'].iloc[0]
+        
+        #Boucles d'explication des charges
+        colPrestation, colSynthese = st.columns(2)
+        with colPrestation:
+            st.write(f"{row['Description']}")
+            st.write(f"{row['Description longue']}")
+            for prestation in prestationsSelectionnees:
                 with st.container(border=True):
-                    st.write(f"Coût de la provision : {MontantProvision:.2f} €")
-                    st.write(f"Coût de la charge pour la résidence : {coutResidence:.2f} €")
-                    st.write(f"**Détail du calcul**")
-                    st.write(f"Les lots sélectionnés corresponent au total à {row['Tantiemes']:.0f} tantièmes associés sur {SimulationEnCours.CaracteristiquesDeLaResidence.TantiemesTotaux} tantièmes totaux de la résidence.")
-                    if not(TopConsommationDeChauffage) or not(TopTemperature):
-                        st.latex(f"{coutResidence:.0f}\\times \\frac{{{row['Tantiemes']:.0f}}}{{{SimulationEnCours.CaracteristiquesDeLaResidence.TantiemesTotaux}}} = {coutLots:.2f}\\text{{ €/an}}")
-                    elif SimulationEnCours.flagPasDeChauffageUtilise:
-                        st.write(f"La température extérieure est supérieure à la température dans les lots sélectionnées et dans la résidence, donc il n'y a pas de consommation de chauffage.")
-                    else:
-                        st.latex(f"{coutResidence:.0f} \\times \\frac{{{row['Tantiemes']:.0f}}}{{{SimulationEnCours.CaracteristiquesDeLaResidence.TantiemesTotaux}}} \\times \\left( 30\\% + 70\\% \\times \\frac{{{SimulationEnCours.TemperatureLot}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}}{{{SimulationEnCours.TemperatureResidence}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}} \\right) = {coutLots:.2f}\\text{{ €/an}}")
-                    st.write(f"Le coût de la charge pour les lots sélectionnés est donc de {coutLots:.2f} € par an ou {coutLots/12:.2f} € par mois.")
+                    st.write(f"**{prestation.Nom} - {prestation.Cout:.2f} €/an**")
+                    st.write(f"Prestataire: **_{prestation.Prestataire}_**")
+                    st.write(f"Description: {prestation.Description}")
+        with colSynthese:
+            with st.container(border=True):
+                st.write(f"Coût de la provision : {MontantProvision:.2f} €")
+                st.write(f"Coût de la charge pour la résidence : {coutResidence:.2f} €")
+                st.write(f"**Détail du calcul**")
+                st.write(f"Les lots sélectionnés corresponent au total à {row['Tantiemes']:.0f} tantièmes associés sur {SimulationEnCours.CaracteristiquesDeLaResidence.TantiemesTotaux} tantièmes totaux de la résidence.")
+                if not(TopConsommationDeChauffage) or not(TopTemperature):
+                    st.latex(f"{coutResidence:.0f}\\times \\frac{{{row['Tantiemes']:.0f}}}{{{SimulationEnCours.CaracteristiquesDeLaResidence.TantiemesTotaux}}} = {coutLots:.2f}\\text{{ €/an}}")
+                elif SimulationEnCours.flagPasDeChauffageUtilise:
+                    st.write(f"La température extérieure est supérieure à la température dans les lots sélectionnées et dans la résidence, donc il n'y a pas de consommation de chauffage.")
+                else:
+                    st.latex(f"{coutResidence:.0f} \\times \\frac{{{row['Tantiemes']:.0f}}}{{{SimulationEnCours.CaracteristiquesDeLaResidence.TantiemesTotaux}}} \\times \\left( 30\\% + 70\\% \\times \\frac{{{SimulationEnCours.TemperatureLot}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}}{{{SimulationEnCours.TemperatureResidence}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}} \\right) = {coutLots:.2f}\\text{{ €/an}}")
+                st.write(f"Le coût de la charge pour les lots sélectionnés est donc de {coutLots:.2f} € par an ou {coutLots/12:.2f} € par mois.")
 
 #SECTION 3 : Résultat du calcul des charges
 st.subheader("3. Résultat du calcul des charges",anchor="section-3")
