@@ -28,24 +28,11 @@ class Chaudiere:
         self.Description=description
 
 class Residence:
-    def __init__(self,Label, VolumeTotalAChauffer, CoefficientIsolation):
+    def __init__(self,Label, VolumeTotalAChauffer, CoefficientIsolation,DfTantiemes):
         self.Nom=Label
         self.VolumeTotalAChaufferM3=VolumeTotalAChauffer
         self.CoefficientIsolation=CoefficientIsolation
-    
-class Lot:
-    """
-    Classe d'objet permettant de définir un lot de copropriété avec ses ID et ses tantièmes associés aux subdivisions.
-    """
-    def __init__(self,description, IDNotaire, DicoTaxonomieTantiemes: dict):
-        self.IDNotaire = IDNotaire
-        self.Description = description
-        #Créer un dico pour initialiser le tableau des tantièmes
-        tableauTantiemesInitialise = {
-            'Label des subdivisions': DicoTaxonomieTantiemes.keys(),
-            'Tantiemes':DicoTaxonomieTantiemes.values()
-        } 
-        self.DfTantiemes= pd.DataFrame(tableauTantiemesInitialise) 
+        self.DfTantiemes=DfTantiemes
 
 class Prestation:
     """
@@ -75,13 +62,13 @@ class CalculateurDeCharges:
     """
     Classe d'objet permettant de calculer les charges de copropriété en fonction des lots, des prestations et des provisions.
     """
-    def __init__(self,LstLot:  list[Lot],
+    def __init__(self,LstLot,
                 LstProvisions: list[Provision], 
                 LaResidence:Residence,
                 LstChaudieres:list[Chaudiere]):
 
         #Initialiser les attributs de la classe
-        self.Lots = LstLot 
+        self.LotsDontOnVeutCalculerLesCharges = LstLot 
         self.CaracteristiquesDeLaResidence=LaResidence
         self.ChaudieresDeLaResidence=sorted(LstChaudieres, key=lambda chaudiere: (chaudiere.OrdreUtilisation if chaudiere.OrdreUtilisation is not None else 999))
 
@@ -96,19 +83,14 @@ class CalculateurDeCharges:
             'Description longue':[provision.DescriptionLongue for provision in LstProvisions],  
             'ID prestation':[provision.IDPrestation for provision in LstProvisions],
             'ID tantiemes':[provision.IDTantiemes for provision in LstProvisions],
-            'TopConsommationDeChauffage': [provision.IDPrestation in {chaudiere.IDPrestation for chaudiere in LstChaudieres} for provision in LstProvisions],
-            'Tantiemes': 0,
+            'Tantiemes': [LaResidence.DfTantiemes.loc[(LaResidence.DfTantiemes["IDTantiemes"] == provision.IDTantiemes) & (LaResidence.DfTantiemes["Numéro de lot"].isin(self.LotsDontOnVeutCalculerLesCharges)), 'Tantièmes'].sum() for provision in LstProvisions],
+            'Tantiemes totaux': [LaResidence.DfTantiemes.loc[LaResidence.DfTantiemes["IDTantiemes"] == provision.IDTantiemes, 'Tantièmes'].sum() for provision in LstProvisions],
             'Charge': float(0),
             'Provisions':[provision.Provision for provision in LstProvisions],
-            'Charges pour les lots sélectionnés': float(0),
-            'Tantiemes totaux': [[lot.DfTantiemes.loc[lot.DfTantiemes['Label des subdivisions']==provision.IDTantiemes,'Tantiemes'] for lot in LstLot].sum() for provision in LstProvisions]
+            'Charges pour les lots sélectionnés': float(0)
         }
         self.DfCharges= pd.DataFrame(tableauTantiemesInitialise).sort_values(by='Provisions', ascending=False)
-
-        #Incrémenter les tantièmes dans le tableau des charges
-        for lot in LstLot:
-            self.DfCharges['Tantiemes'] += self.DfCharges['ID tantiemes'].map(
-                lot.DfTantiemes.set_index('Label des subdivisions')['Tantiemes']).fillna(0)
+        self.DfCharges['TopConsommationDeChauffage'] = self.DfCharges['ID prestation'].isin([chaudiere.IDPrestation for chaudiere in self.ChaudieresDeLaResidence])
 
     def Etape1aConstruireTableauDeCharges (self,IDPrestation, LstPrestationsSelectionnees: list[Prestation]):
         """
@@ -126,21 +108,22 @@ class CalculateurDeCharges:
             #On ajoute le coût de la prestation aux charges totales
             CoutReelDuPosteDeProvision += prestation.Cout
         #Si aucune prestation n'est associée à la provision, on prend le coût de la provision
-        if CoutReelDuPosteDeProvision==0:
-            CoutReelDuPosteDeProvision=row['Provisions']
         #On ajoute le coût réel du poste de provision aux charges totales
-        self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charge'] = CoutReelDuPosteDeProvision
+        self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charge'] = CoutReelDuPosteDeProvision if CoutReelDuPosteDeProvision > 0 else self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Provisions'].iloc[0]
 
     def Etape2CalculerLesChargesParLot (self,topScenarioDeTemperature=False):
         """
         Méthode permettant de calculer les charges par lot en fonction des tantièmes et des charges totales.
         """
         #Pour chaque tantièmes on calcul les couts
-        if topScenarioDeTemperature:
-            self.DfCharges.loc[self.DfCharges['TopConsommationDeChauffage']==True,'Charges pour les lots sélectionnés'] = (self.DfCharges.Charge.loc[self.DfCharges['TopConsommationDeChauffage']==True] * self.DfCharges.Tantiemes.loc[self.DfCharges['TopConsommationDeChauffage']==True]) / self.CaracteristiquesDeLaResidence.TantiemesTotaux * (0.3 + 0.7 * (self.TemperatureLot - self.TemperatureExterieure) / max(0.001, (self.TemperatureResidence - self.TemperatureExterieure)))
-            self.DfCharges.loc[self.DfCharges['TopConsommationDeChauffage']==False,'Charges pour les lots sélectionnés'] = (self.DfCharges.Charge.loc[self.DfCharges['TopConsommationDeChauffage']==False] * self.DfCharges.Tantiemes.loc[self.DfCharges['TopConsommationDeChauffage']==False] ) / self.CaracteristiquesDeLaResidence.TantiemesTotaux
-        else:
-            self.DfCharges.loc[:,'Charges pour les lots sélectionnés'] = (self.DfCharges.Charge * self.DfCharges.Tantiemes) / self.CaracteristiquesDeLaResidence.TantiemesTotaux
+        self.DfCharges['Charges pour les lots sélectionnés'] = (
+                (self.DfCharges.Charge * self.DfCharges.Tantiemes) / self.DfCharges['Tantiemes totaux']
+            )*(
+                0.3 + 0.7 * (self.TemperatureLot - self.TemperatureExterieure
+                    ) / max(
+                        0.001, 
+                        (self.TemperatureResidence - self.TemperatureExterieure)
+                    ) if self.DfCharges.TopConsommationDeChauffage.any() & TopTemperature else 1)
 
     def Etape1bParametrerLesTemperatures(self, TemperatureLot=19, TemperatureExterieure=19, TemperatureResidence=19, NbHeuresDeChauffe=2000):
         """
@@ -182,10 +165,22 @@ class CalculateurDeCharges:
 def ImporterDonneesDeLaResidence():
     DonneesDeLaResidence= pd.read_excel("input.xlsx", sheet_name=["Provisions", "Prestations", "Lots","Residence","Chauffage central"])
     #Récupérer un dictionnaire de tantièmes pour les lots
+    DfLots =pd.melt(
+        DonneesDeLaResidence["Lots"],
+        id_vars=[
+            "Numéro de lot",
+            "Description",
+        ],  # <--- Vos 2 colonnes fixes à conserver
+        var_name="IDTantiemes",  # Nom pour la colonne qui contiendra les anciens noms de colonnes
+        value_name="Tantièmes",  # Nom pour la colonne qui contiendra les valeurs
+    )  
+    
+
     residence = Residence(
         DonneesDeLaResidence["Residence"].iloc[0]["Label"],
         DonneesDeLaResidence["Residence"].iloc[0]["Volume à chauffer en m3"],
         DonneesDeLaResidence["Residence"].iloc[0]["Coefficient d'isolation"],
+        DfLots
         )
 
     LstChaudieres = [Chaudiere(
@@ -195,13 +190,7 @@ def ImporterDonneesDeLaResidence():
         row["Production maximum en kW"],
         row["Ordre d'utilisation"],
         row["Description"]
-        ) for index, row in DonneesDeLaResidence["Chauffage central"].iterrows() if isinstance(row["Ordre d'utilisation"],(float,int))]    
-
-    LstLots = [Lot(
-        row["Description"], 
-        row["Numéro de lot"],
-        row.drop(["Numéro de lot", "Description"]).to_dict()
-        ) for index, row in DonneesDeLaResidence["Lots"].iterrows()]    
+        ) for index, row in DonneesDeLaResidence["Chauffage central"].iterrows() if isinstance(row["Ordre d'utilisation"],(float,int))]      
 
     LstProvisions = [Provision(
         row["Label de la provision"], 
@@ -220,7 +209,7 @@ def ImporterDonneesDeLaResidence():
         row["ID prestation"],
         (row["Prestation choisie actuellement"]=="X")
     ) for index, row in DonneesDeLaResidence["Prestations"].iterrows()]
-    return LstLots, LstProvisions, LstPrestations,residence, LstChaudieres
+    return DfLots, LstProvisions, LstPrestations,residence, LstChaudieres
 
 
 ##################################
@@ -243,24 +232,24 @@ st.subheader("1. Sélection des lots",anchor="section-1")
 st.write("Ce calculateur permet d'estimer les charges de copropriété en fonction des prestations sélectionnées et des tantièmes des lots choisis. Sélectionnez les lots et les prestations pour voir le calcul des charges:")
 
 
-LstLots, LstProvisions, LstPrestations,LaResidence, LstChaudieres = ImporterDonneesDeLaResidence()
+DfLots, LstProvisions, LstPrestations,LaResidence, LstChaudieres = ImporterDonneesDeLaResidence()
 # Un widget interactif : une boîte de saisie de texte
 LstLotsChoisis = st.multiselect(
     "Lots de la résidence à inclure dans le calcul des charges",
-    options=LstLots,
-    format_func=lambda lot: f"🔹 {lot.IDNotaire} - {lot.Description}") 
+    options=DfLots["Numéro de lot"].tolist(),
+    format_func=lambda numeroDelot: f"🔹 {numeroDelot} - {DfLots[DfLots['Numéro de lot'] == numeroDelot]['Description'].iloc[0]}" ) 
 
 # Une condition pour afficher un message si le texte est rempli 
 if LstLotsChoisis:
     st.write("**Vous avez sélectionné les lots suivants :**")
-    for lot in LstLotsChoisis:
+    for numeroDeLot in LstLotsChoisis:
         # Chaque st.write crée automatiquement une nouvelle ligne
-        st.write(f"🔹 {lot.IDNotaire} - {lot.Description}")
+        st.write(f"🔹 {numeroDeLot} - {DfLots[DfLots['Numéro de lot'] == numeroDeLot]['Description'].iloc[0]}")
 
 #Initialisation du calculateur de charges avec les lots choisis et les provisions
 SimulationEnCours=CalculateurDeCharges(LstLotsChoisis, LstProvisions,LaResidence,LstChaudieres)
 
-#SECTION 2 : Paramétrage des prestations et des charges
+#SECTION 2 : Paramétrage des prestations et des charges 
 st.subheader("2. Paramétrage des prestations et des charges",anchor="section-2")
 #Choix de simuler la consommation de chauffage à partir de la température
 TopTemperature=st.toggle("Paramétrer un scénario hivernal", key=f"toggle_temperature")
@@ -334,10 +323,11 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
                 #Ajout des prestations à la liste des prestations choisies pour le calcul des charges
                 prestationsChoisies.extend(prestationsSelectionnees)
             else:
-                prestationsSelectionnees=[]
-        
+                prestationsSelectionnees=[]        
             #Calcul de la charge résultant des prestations choisies pour ce poste de provision
             SimulationEnCours.Etape1aConstruireTableauDeCharges(IDPrestationActuel, prestationsSelectionnees)
+        else:
+            prestationsSelectionnees=[]
         #Intégrer les charge dans le tableau des charges 
         SimulationEnCours.Etape2CalculerLesChargesParLot(TopTemperature)
         
@@ -360,19 +350,19 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
                 st.write(f"Coût de la provision : {MontantProvision:.2f} €")
                 st.write(f"Coût de la charge pour la résidence : {coutResidence:.2f} €")
                 st.write(f"**Détail du calcul**")
-                st.write(f"Les lots sélectionnés corresponent au total à {row['Tantiemes']:.0f} tantièmes associés sur {SimulationEnCours.CaracteristiquesDeLaResidence.TantiemesTotaux} tantièmes totaux de la résidence.")
+                st.write(f"Les lots sélectionnés corresponent au total à {row['Tantiemes']:.0f} tantièmes associés aux lots, pour {row['Tantiemes totaux']:.0f} tantièmes totaux de la résidence.")
                 if not(TopConsommationDeChauffage) or not(TopTemperature):
-                    st.latex(f"{coutResidence:.0f}\\times \\frac{{{row['Tantiemes']:.0f}}}{{{SimulationEnCours.CaracteristiquesDeLaResidence.TantiemesTotaux}}} = {coutLots:.2f}\\text{{ €/an}}")
+                    st.latex(f"{coutResidence:.0f}\\times \\frac{{{row['Tantiemes']:.0f}}}{{{row['Tantiemes totaux']:.0f}}} = {coutLots:.2f}\\text{{ €/an}}")
                 elif SimulationEnCours.flagPasDeChauffageUtilise:
                     st.write(f"La température extérieure est supérieure à la température dans les lots sélectionnées et dans la résidence, donc il n'y a pas de consommation de chauffage.")
                 else:
-                    st.latex(f"{coutResidence:.0f} \\times \\frac{{{row['Tantiemes']:.0f}}}{{{SimulationEnCours.CaracteristiquesDeLaResidence.TantiemesTotaux}}} \\times \\left( 30\\% + 70\\% \\times \\frac{{{SimulationEnCours.TemperatureLot}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}}{{{SimulationEnCours.TemperatureResidence}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}} \\right) = {coutLots:.2f}\\text{{ €/an}}")
+                    st.latex(f"{coutResidence:.0f} \\times \\frac{{{row['Tantiemes']:.0f}}}{{{row['Tantiemes totaux']:.0f}}} \\times \\left( 30\\% + 70\\% \\times \\frac{{{SimulationEnCours.TemperatureLot}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}}{{{SimulationEnCours.TemperatureResidence}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}} \\right) = {coutLots:.2f}\\text{{ €/an}}")
                 st.write(f"Le coût de la charge pour les lots sélectionnés est donc de {coutLots:.2f} € par an ou {coutLots/12:.2f} € par mois.")
 
 #SECTION 3 : Résultat du calcul des charges
 st.subheader("3. Résultat du calcul des charges",anchor="section-3")
 #Afficher tableau des charges                    
-st.dataframe(SimulationEnCours.DfCharges.drop(columns=['ID prestation', 'ID tantiemes','Description']))
+st.dataframe(SimulationEnCours.DfCharges.drop(columns=['ID prestation','Description longue',"TopConsommationDeChauffage", 'ID tantiemes','Description']))
 
 #Afficher les charges annuelles et mensuelles totales pour les lots sélectionnés
 st.write(f"**Total des charges annuelles pour les lots sélectionnés : {SimulationEnCours.DfCharges['Charges pour les lots sélectionnés'].sum():.2f} €**")
