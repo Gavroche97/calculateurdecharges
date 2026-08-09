@@ -2,11 +2,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-#10007 tantiemes au total
-#10142 M3 à chauffer dans la résidence, estimation par tantieme
 #0.4 à 0.8 : Très bien isolé (RT2012 / BBC) - 0.9 à 1.1 : Isolation standard (Années 90/2000) - 1.2 à 1.6 : Mal isolé (Passoire thermique).
-#On suppose que c'est le mododèle Herz Firematic 150 d'une capacité de 150kWh
-#On suppose que c'est le modèle Atlantic Varmax 2 225 d'une capacité de 225kWh
+#On suppose que c'est le mododèle Herz Firematic 150 d'une capacité de 150kW
+#On suppose que c'est le modèle Atlantic Varmax 2 225 d'une capacité de 225kW
 
 # Commande pour 
 st.set_page_config(
@@ -111,20 +109,6 @@ class CalculateurDeCharges:
         #On ajoute le coût réel du poste de provision aux charges totales
         self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charge'] = CoutReelDuPosteDeProvision if CoutReelDuPosteDeProvision > 0 else self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Provisions'].iloc[0]
 
-    def Etape2CalculerLesChargesParLot (self,topScenarioDeTemperature=False):
-        """
-        Méthode permettant de calculer les charges par lot en fonction des tantièmes et des charges totales.
-        """
-        #Pour chaque tantièmes on calcul les couts
-        self.DfCharges['Charges pour les lots sélectionnés'] = (
-                (self.DfCharges.Charge * self.DfCharges.Tantiemes) / self.DfCharges['Tantiemes totaux']
-            )*(
-                0.3 + 0.7 * (self.TemperatureLot - self.TemperatureExterieure
-                    ) / max(
-                        0.001, 
-                        (self.TemperatureResidence - self.TemperatureExterieure)
-                    ) if self.DfCharges.TopConsommationDeChauffage.any() & TopTemperature else 1)
-
     def Etape1bParametrerLesTemperatures(self, TemperatureLot=19, TemperatureExterieure=19, TemperatureResidence=19, NbHeuresDeChauffe=2000):
         """
         Méthode permettant de paramétrer les températures pour le calcul des charges de chauffage.
@@ -160,12 +144,48 @@ class CalculateurDeCharges:
             #Mise à jour de la puissance de chauffe restante
             puissanceDeChauffeRestante-=puissanceDeChauffeUtiliseeEnkWh
 
+    def Etape2CalculerLesChargesParLot (self,IDPrestation,ConsommationEnEauM3=0,topScenarioDeTemperature=False):
+        """
+        Méthode permettant de calculer les charges par lot en fonction des tantièmes et des charges totales.
+        """
+        if IDPrestation=="EAU":
+            #Calcul de la charge résultant de la consommation d'eau saisie pour ce poste de provision
+            self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charge'] =self.DfCharges.Provisions
+            self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charges pour les lots sélectionnés'] = CalculateurDeCharges.CalculerLeCoutDeEauCourante(ConsommationEnEauM3)
+
+        else:
+        #Pour chaque tantièmes on calcul les couts
+            self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charges pour les lots sélectionnés'] = (
+                (self.DfCharges.Charge * self.DfCharges.Tantiemes) / self.DfCharges['Tantiemes totaux'])*(
+                    0.3 + 0.7 * (self.TemperatureLot - self.TemperatureExterieure) / max(0.001, (self.TemperatureResidence - self.TemperatureExterieure)) if self.DfCharges.TopConsommationDeChauffage.any() & TopTemperature else 1)
+    
+    def CalculerLeCoutDeEauCourante(consommationEauEnM3):
+        """
+        Méthode permettant de calculer le coût de l'eau courante en fonction de la consommation en m3 pour Noisy le Sec (Est Ensemble)
+        """
+        TaxeEtRedevances=3.3254
+        TVA=1.08
+        if consommationEauEnM3 <= 10:
+            return consommationEauEnM3 * TaxeEtRedevances*TVA
+        elif consommationEauEnM3 <= 28:
+            return 10*TaxeEtRedevances*TVA+(1.1988+TaxeEtRedevances) * (consommationEauEnM3 - 10)*TVA
+        elif consommationEauEnM3 <= 86:
+            return 10*TaxeEtRedevances*TVA+(1.1988+TaxeEtRedevances) * 18*TVA+(1.3320+TaxeEtRedevances) * (consommationEauEnM3 - 28)*TVA
+        elif consommationEauEnM3 <= 101:
+            return 10*TaxeEtRedevances*TVA+(1.1988+TaxeEtRedevances) * 18*TVA+(1.3320+TaxeEtRedevances) *58*TVA+(1.3720+TaxeEtRedevances) * (consommationEauEnM3 - 86)*TVA
+        elif consommationEauEnM3 <= 131:
+            return 10*TaxeEtRedevances*TVA+(1.1988+TaxeEtRedevances) * 18*TVA+(1.3320+TaxeEtRedevances) *58*TVA+(1.3720+TaxeEtRedevances) * 15 *TVA+(1.42+TaxeEtRedevances) * (consommationEauEnM3 - 101)*TVA
+        elif consommationEauEnM3 <= 140:
+            return 10*TaxeEtRedevances*TVA+(1.1988+TaxeEtRedevances) * 18*TVA+(1.3320+TaxeEtRedevances) *58*TVA+(1.3720+TaxeEtRedevances) * 15 *TVA+(1.42+TaxeEtRedevances) * 30*TVA+(1.4919+TaxeEtRedevances) * (consommationEauEnM3 - 131)*TVA
+        else:
+            return 10*TaxeEtRedevances*TVA+(1.1988+TaxeEtRedevances) * 18*TVA+(1.3320+TaxeEtRedevances) *58*TVA+(1.3720+TaxeEtRedevances) * 15 *TVA+(1.42+TaxeEtRedevances) * 30*TVA+(1.4919+TaxeEtRedevances) * 9*TVA+(1.5366+TaxeEtRedevances) * (consommationEauEnM3 - 140)*TVA
+
 #Import de données de provision, prestations et tantièmes
-@st.cache_data
-def ImporterDonneesDeLaResidence():
+@st.cache_data 
+def ImporterDonneesDeLaResidence(): 
     DonneesDeLaResidence= pd.read_excel("input.xlsx", sheet_name=["Provisions", "Prestations", "Lots","Residence","Chauffage central"])
-    #Récupérer un dictionnaire de tantièmes pour les lots
-    DfLots =pd.melt(
+    #Récupérer un dictionnaire de tantièmes pour les lots 
+    DfLots =pd.melt( 
         DonneesDeLaResidence["Lots"],
         id_vars=[
             "Numéro de lot",
@@ -290,6 +310,7 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
     IDPrestationActuel=row["ID prestation"]
     MontantProvision=row["Provisions"]
     TopConsommationDeChauffage=row["TopConsommationDeChauffage"]
+    consommationEauEnM3=0
 
     #Affichage des règles selon le montant de la provision
     if MontantProvision>1500 and not TopIndicateurProvSupA1500:
@@ -303,12 +324,11 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
         st.write("**Les provisions suivantes sont inférieures à 500€HT par an, le syndic n'a plus l'obligation de consulter le conseil syndical.**")
     
     with st.expander(f"**{row['Postes de provisions']} - Provision: {MontantProvision:.0f}€/an**"):
-        #Indiquer le poste de provision en gros puis la description en dessous
-        st.markdown(f"<h3 style='text-align: center;'> {row['Postes de provisions']} </h3>",unsafe_allow_html=True)
 
-        #Cas pour la consommation de chauffage
-        #Si simulation selon températures activées
-        if not(TopTemperature & TopConsommationDeChauffage):
+        ConditionProvisionCommune=not(TopTemperature and TopConsommationDeChauffage) and not(IDPrestationActuel =="EAU")
+
+        #Cas où on sélectionne des prestations dans la liste 
+        if ConditionProvisionCommune:
             #Valeur définie selon les prestations choisies  
             optionsDePrestations = [prestation for prestation in LstPrestations if prestation.IDPrestation == IDPrestationActuel]
             prestationsEnCours = [prestation for prestation in optionsDePrestations if prestation.TopPrestationChoisie]
@@ -322,14 +342,21 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
                     )
                 #Ajout des prestations à la liste des prestations choisies pour le calcul des charges
                 prestationsChoisies.extend(prestationsSelectionnees)
-            else:
-                prestationsSelectionnees=[]        
+            else: #Cas où il n'y a pas de prestations associées à la provision, on ne fait rien
+                prestationsSelectionnees=[]       
+                st.write("Aucune prestation n'est associée à ce poste de provision, le calcul des charges se fera sur la base de la provision.") 
             #Calcul de la charge résultant des prestations choisies pour ce poste de provision
             SimulationEnCours.Etape1aConstruireTableauDeCharges(IDPrestationActuel, prestationsSelectionnees)
-        else:
+        elif IDPrestationActuel =="EAU" :
+            #reprendre ici
+            #Saisie de la consommation d'eau en m3 pour le calcul des charges
+            consommationEauEnM3=st.number_input("Saisissez la consommation d'eau en m3 pour calculer la charge d'eau courante:",0,100000,100,key=f"consommation_eau_{IDPrestationActuel}")
             prestationsSelectionnees=[]
-        #Intégrer les charge dans le tableau des charges 
-        SimulationEnCours.Etape2CalculerLesChargesParLot(TopTemperature)
+        else:#On met à 0 sinon ça ressort les prestations choisie des postes de provisions précédentes 
+            prestationsSelectionnees=[]
+
+        #Intégrer les charges par lots sélectionnés dans le tableau des charges 
+        SimulationEnCours.Etape2CalculerLesChargesParLot(IDPrestationActuel, ConsommationEnEauM3=consommationEauEnM3, topScenarioDeTemperature=TopTemperature)
         
         #Récupérer le cout pour les lots
         coutResidence = SimulationEnCours.DfCharges.loc[SimulationEnCours.DfCharges['ID prestation'] == IDPrestationActuel, 'Charge'].iloc[0]
@@ -351,12 +378,16 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
                 st.write(f"Coût de la charge pour la résidence : {coutResidence:.2f} €")
                 st.write(f"**Détail du calcul**")
                 st.write(f"Les lots sélectionnés corresponent au total à {row['Tantiemes']:.0f} tantièmes associés aux lots, pour {row['Tantiemes totaux']:.0f} tantièmes totaux de la résidence.")
-                if not(TopConsommationDeChauffage) or not(TopTemperature):
+                
+                #Explication du calcul des charges pour les lots sélectionnés
+                if ConditionProvisionCommune:
                     st.latex(f"{coutResidence:.0f}\\times \\frac{{{row['Tantiemes']:.0f}}}{{{row['Tantiemes totaux']:.0f}}} = {coutLots:.2f}\\text{{ €/an}}")
                 elif SimulationEnCours.flagPasDeChauffageUtilise:
                     st.write(f"La température extérieure est supérieure à la température dans les lots sélectionnées et dans la résidence, donc il n'y a pas de consommation de chauffage.")
-                else:
+                elif (TopTemperature and TopConsommationDeChauffage):
                     st.latex(f"{coutResidence:.0f} \\times \\frac{{{row['Tantiemes']:.0f}}}{{{row['Tantiemes totaux']:.0f}}} \\times \\left( 30\\% + 70\\% \\times \\frac{{{SimulationEnCours.TemperatureLot}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}}{{{SimulationEnCours.TemperatureResidence}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}} \\right) = {coutLots:.2f}\\text{{ €/an}}")
+                else:
+                    st.write(f"La consommation d'eau courante est de {consommationEauEnM3} m3.")
                 st.write(f"Le coût de la charge pour les lots sélectionnés est donc de {coutLots:.2f} € par an ou {coutLots/12:.2f} € par mois.")
 
 #SECTION 3 : Résultat du calcul des charges
