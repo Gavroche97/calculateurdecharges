@@ -2,9 +2,13 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+#A faire
+# - Intégrer calcul de l'ECS dans le chauffage
+# - Supprimer le slider de demande de scénario hivernal => Plus de prestation à choisir pour le chauffage
+# - Afficher la consommation de combustible en unité
 #0.4 à 0.8 : Très bien isolé (RT2012 / BBC) - 0.9 à 1.1 : Isolation standard (Années 90/2000) - 1.2 à 1.6 : Mal isolé (Passoire thermique).
-#On suppose que c'est le mododèle Herz Firematic 150 d'une capacité de 150kW
-#On suppose que c'est le modèle Atlantic Varmax 2 225 d'une capacité de 225kW
+#Mododèle Herz Firematic 120 d'une capacité de 120kW
+#Modèle Atlantic Varmax 2 140 d'une capacité de 140kW
 
 # Commande pour 
 st.set_page_config(
@@ -285,23 +289,25 @@ st.subheader("2. Paramétrage des prestations et des charges",anchor="section-2"
 #Choix de simuler la consommation de chauffage à partir de la température
 TopTemperature=st.toggle("Paramétrer un scénario hivernal", key=f"toggle_temperature")
 col_temp1, col_temp2, col_temp3, col_nbHeures = st.columns(4)
+with col_temp1:
+    temperatureEauFroide = st.slider("Température moyenne de l'eau froide à chauffer pour l'eau chaude sanitaire (°C)", -10, 50, 14, key=f"temp_eau_froide") 
 with col_temp2:
     #Saisie de la consommation d'eau en m3 pour le calcul des charges
     consommationEauEnM3=st.number_input("Saisissez la consommation d'eau individuelle d'eau totale (M3):",0,100000,100,key=f"consommationEauIndividuelles")
 with col_temp3:
-    consommationEauChaudeM3=st.number_input("Saisissez la consommation individuelle d'eau chaude inclus (M3):",0,100000,100,key=f"consommationEauChaudeIndividuelle")
+    consommationEauChaudeM3=st.number_input("Saisissez la consommation individuelle d'eau chaude inclus (M3):",0,100000,30,key=f"consommationEauChaudeIndividuelle")
 
 if TopTemperature:
     #Déployer les zone de saisie des paramètres de températures
     with col_temp1:
-        consommationEauChaudeM3Residence=st.number_input("Saisissez la consommation d'eau chaude annuelle de toute la résidence (M3)",consommationEauChaudeM3,10000000,key=f"consommationEauChaudeResidence")
-        temperatureExterieure = st.slider("Température à l'extérieur de la résidence (°C)", -100, 25, 10, key=f"temp_ext")
+        temperatureExterieure = st.slider("Température à l'extérieur de la résidence (°C)", -100, 25, 5, key=f"temp_ext")
     with col_temp2:
         temperatureDuLot = st.slider("Température intérieure des lots (°C)", 0, 25, 19, key=f"temp_lot")
     with col_temp3:
         temperatureResidence = st.slider("Température moyenne de la résidence (°C)", 0, 25, 19, key=f"temp_res")
     with col_nbHeures:
         nbHeuresDeChauffe=st.number_input("Saisissez le nombre d'heures d'activité des chaufferies sur un an (heures)",0,10000,2000)
+        consommationEauChaudeM3Residence=st.number_input("Saisissez la consommation d'eau chaude annuelle de toute la résidence (M3)",consommationEauChaudeM3,1000000,1600,key=f"consommationEauChaudeResidence")
     #Intégration des parametres
     SimulationEnCours.Etape1bParametrerLesTemperatures(
         TemperatureLot=temperatureDuLot,TemperatureExterieure=temperatureExterieure,TemperatureResidence=temperatureResidence,NbHeuresDeChauffe= nbHeuresDeChauffe)
