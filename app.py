@@ -4,8 +4,6 @@ import plotly.express as px
 
 #A faire
 # - Intégrer calcul de l'ECS dans le chauffage
-# - Supprimer le slider de demande de scénario hivernal => Plus de prestation à choisir pour le chauffage
-# - Afficher la consommation de combustible en unité
 #0.4 à 0.8 : Très bien isolé (RT2012 / BBC) - 0.9 à 1.1 : Isolation standard (Années 90/2000) - 1.2 à 1.6 : Mal isolé (Passoire thermique).
 #Mododèle Herz Firematic 120 d'une capacité de 120kW
 #Modèle Atlantic Varmax 2 140 d'une capacité de 140kW
@@ -101,26 +99,7 @@ class CalculateurDeCharges:
         self.DfCharges= pd.DataFrame(tableauTantiemesInitialise).sort_values(by='Provisions', ascending=False)
         self.DfCharges['TopConsommationDeChauffage'] = self.DfCharges['ID prestation'].isin([chaudiere.IDPrestation for chaudiere in self.ChaudieresDeLaResidence])
 
-    def Etape1aConstruireTableauDeCharges (self,IDPrestation, LstPrestationsSelectionnees: list[Prestation]):
-        """
-        Méthode permettant de calculer les charges totales de copropriété en fonction des prestations et des provisions.
-        """
-        #Sauvegarder la liste de prestations sélectionnées
-        self.PrestationsSelectionnees = LstPrestationsSelectionnees 
-        #Réinitialiser les charges à 0
-        self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charge'] = float(0)
-
-        #Calculer les charges totales 
-        CoutReelDuPosteDeProvision = 0
-        #Pour chaque provision on checke si on a des prestations associées
-        for prestation in self.PrestationsSelectionnees:
-            #On ajoute le coût de la prestation aux charges totales
-            CoutReelDuPosteDeProvision += prestation.Cout
-        #Si aucune prestation n'est associée à la provision, on prend le coût de la provision
-        #On ajoute le coût réel du poste de provision aux charges totales
-        self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charge'] = CoutReelDuPosteDeProvision if CoutReelDuPosteDeProvision > 0 else self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Provisions'].iloc[0]
-
-    def Etape1bParametrerLesTemperatures(self, TemperatureLot=19, TemperatureExterieure=19, TemperatureResidence=19, NbHeuresDeChauffe=2000):
+    def Etape1ParametrerLesTemperatures(self, TemperatureLot=19, TemperatureExterieure=19, TemperatureResidence=19, NbHeuresDeChauffe=2000):
         """
         Méthode permettant de paramétrer les températures pour le calcul des charges de chauffage.
         La température de la résidence inclue celle des lots sélectionnées, la temperature des lots non sélectionnés n'est pas la température de la résidence 
@@ -155,7 +134,27 @@ class CalculateurDeCharges:
             #Mise à jour de la puissance de chauffe restante
             puissanceDeChauffeRestante-=puissanceDeChauffeUtiliseeEnkWh
 
-    def Etape2CalculerLesChargesParLot (self,IDPrestation,ConsommationEnEauM3=0,topScenarioDeTemperature=False):
+    def Etape2ConstruireTableauDeCharges (self,IDPrestation, LstPrestationsSelectionnees: list[Prestation]):
+        """
+        Méthode permettant de calculer les charges totales de copropriété en fonction des prestations et des provisions.
+        """
+        #Sauvegarder la liste de prestations sélectionnées
+        self.PrestationsSelectionnees = LstPrestationsSelectionnees 
+        #Réinitialiser les charges à 0
+        self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charge'] = float(0)
+
+        #Calculer les charges totales 
+        CoutReelDuPosteDeProvision = 0
+        #Pour chaque provision on checke si on a des prestations associées
+        for prestation in self.PrestationsSelectionnees:
+            #On ajoute le coût de la prestation aux charges totales
+            CoutReelDuPosteDeProvision += prestation.Cout
+        #Si aucune prestation n'est associée à la provision, on prend le coût de la provision
+        #On ajoute le coût réel du poste de provision aux charges totales
+        self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charge'] = CoutReelDuPosteDeProvision if CoutReelDuPosteDeProvision > 0 else self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Provisions'].iloc[0]
+
+
+    def Etape3CalculerLesChargesParLot (self,IDPrestation,ConsommationEnEauM3=0):
         """
         Méthode permettant de calculer les charges par lot en fonction des tantièmes et des charges totales.
         """
@@ -168,7 +167,7 @@ class CalculateurDeCharges:
         #Pour chaque tantièmes on calcul les couts
             self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charges pour les lots sélectionnés'] = (
                 (self.DfCharges.Charge * self.DfCharges.Tantiemes) / self.DfCharges['Tantiemes totaux'])*(
-                    0.3 + 0.7 * (self.TemperatureLot - self.TemperatureExterieure) / max(0.001, (self.TemperatureResidence - self.TemperatureExterieure)) if self.DfCharges.TopConsommationDeChauffage.any() & TopTemperature else 1)
+                    0.3 + 0.7 * (self.TemperatureLot - self.TemperatureExterieure) / max(0.001, (self.TemperatureResidence - self.TemperatureExterieure)) if self.DfCharges.TopConsommationDeChauffage.any() else 1)
     
     def CalculerLeCoutDeEauCourante(consommationEauEnM3):
         """
@@ -287,40 +286,32 @@ SimulationEnCours=CalculateurDeCharges(LstLotsChoisis, LstProvisions,LaResidence
 #SECTION 2 : Paramétrage des prestations et des charges 
 st.subheader("2. Paramétrage des prestations et des charges",anchor="section-2")
 #Choix de simuler la consommation de chauffage à partir de la température
-TopTemperature=st.toggle("Paramétrer un scénario hivernal", key=f"toggle_temperature")
 col_temp1, col_temp2, col_temp3, col_nbHeures = st.columns(4)
 with col_temp1:
-    temperatureEauFroide = st.slider("Température moyenne de l'eau froide à chauffer pour l'eau chaude sanitaire (°C)", -10, 50, 14, key=f"temp_eau_froide") 
-with col_temp2:
-    #Saisie de la consommation d'eau en m3 pour le calcul des charges
     consommationEauEnM3=st.number_input("Saisissez la consommation d'eau individuelle d'eau totale (M3):",0,100000,100,key=f"consommationEauIndividuelles")
-with col_temp3:
+    temperatureExterieure = st.slider("Température à l'extérieur de la résidence (°C)", -30, 25, 5, key=f"temp_ext")
+with col_temp2:
     consommationEauChaudeM3=st.number_input("Saisissez la consommation individuelle d'eau chaude inclus (M3):",0,100000,30,key=f"consommationEauChaudeIndividuelle")
+    temperatureResidence = st.slider("Température moyenne de la résidence (°C)", 0, 25, 19, key=f"temp_res")
+with col_temp3:
+    consommationEauChaudeM3Residence=st.number_input("Saisissez la consommation d'eau chaude annuelle de toute la résidence (M3):",consommationEauChaudeM3,1000000,1600,key=f"consommationEauChaudeResidence")
+    temperatureDuLot = st.slider("Température intérieure des lots (°C)", 0, 25, 19, key=f"temp_lot")
+with col_nbHeures:
+    nbHeuresDeChauffe=st.number_input("Saisissez le nombre d'heures d'activité du chauffage central durant un hiver (heures):",0,10000,2000)
+    temperatureEauFroide = st.slider("Température moyenne de l'eau froide à chauffer (°C)", -10, 50, 14, key=f"temp_eau_froide") 
+#Intégration des parametres
+SimulationEnCours.Etape1ParametrerLesTemperatures(
+    TemperatureLot=temperatureDuLot,TemperatureExterieure=temperatureExterieure,TemperatureResidence=temperatureResidence,NbHeuresDeChauffe= nbHeuresDeChauffe)
 
-if TopTemperature:
-    #Déployer les zone de saisie des paramètres de températures
-    with col_temp1:
-        temperatureExterieure = st.slider("Température à l'extérieur de la résidence (°C)", -100, 25, 5, key=f"temp_ext")
-    with col_temp2:
-        temperatureDuLot = st.slider("Température intérieure des lots (°C)", 0, 25, 19, key=f"temp_lot")
-    with col_temp3:
-        temperatureResidence = st.slider("Température moyenne de la résidence (°C)", 0, 25, 19, key=f"temp_res")
-    with col_nbHeures:
-        nbHeuresDeChauffe=st.number_input("Saisissez le nombre d'heures d'activité des chaufferies sur un an (heures)",0,10000,2000)
-        consommationEauChaudeM3Residence=st.number_input("Saisissez la consommation d'eau chaude annuelle de toute la résidence (M3)",consommationEauChaudeM3,1000000,1600,key=f"consommationEauChaudeResidence")
-    #Intégration des parametres
-    SimulationEnCours.Etape1bParametrerLesTemperatures(
-        TemperatureLot=temperatureDuLot,TemperatureExterieure=temperatureExterieure,TemperatureResidence=temperatureResidence,NbHeuresDeChauffe= nbHeuresDeChauffe)
-    
-    with st.expander("Voir les paramètres de température et de chauffage"):
-        with st.container(border=True):
-            st.write(f"Puissance de chauffe nécessaire pour la résidence : {SimulationEnCours.PuissanceDeChauffeNecessaireEnWatt:.0f} W soit {SimulationEnCours.PuissanceDeChauffeNecessaireEnKWH:.0f} kWh")
-            st.write(f"Paramètres des chaudières :")
-            for chaudiere in SimulationEnCours.ChaudieresDeLaResidence:
-                st.write(f"**Chaudière : {chaudiere.Nom}**")
-                st.write(f"- Production max. {chaudiere.ProductionMaxkW} kW, Prix du combustible: {chaudiere.PrixUniteCombustible:.2f}€/{chaudiere.NomUniteCombustible}, Prix standardisé: {chaudiere.PrixkWh:.4f} €/kWh")
-                st.write(f"- Puissance utilisée : {chaudiere.PuissanceUtiliseeEnkWh:.2f} kWh (Taux d'utilisation: {((chaudiere.PuissanceUtiliseeEnkWh/SimulationEnCours.NombreHeuresDeChauffe)/chaudiere.ProductionMaxkW)*100:.0f}%), Coût de la charge : {chaudiere.PuissanceUtiliseeEnkWh*chaudiere.PrixkWh:.2f} €")
-                st.write(f"- Description : {chaudiere.Description}")
+with st.expander("Voir les paramètres de température et de chauffage"):
+    with st.container(border=True):
+        st.write(f"Puissance de chauffe nécessaire pour la résidence : {SimulationEnCours.PuissanceDeChauffeNecessaireEnWatt:.0f} W soit {SimulationEnCours.PuissanceDeChauffeNecessaireEnKWH:.0f} kWh")
+        st.write(f"Paramètres des chaudières :")
+        for chaudiere in SimulationEnCours.ChaudieresDeLaResidence:
+            st.write(f"**Chaudière : {chaudiere.Nom}**")
+            st.write(f"- Production max. {chaudiere.ProductionMaxkW} kW, Prix du combustible: {chaudiere.PrixUniteCombustible:.2f}€/{chaudiere.NomUniteCombustible}, consommation: {chaudiere.PuissanceUtiliseeEnkWh/chaudiere.kWhUniteCombustible:.2f} {chaudiere.NomUniteCombustible}, Prix standardisé: {chaudiere.PrixkWh:.4f} €/kWh")
+            st.write(f"- Puissance utilisée : {chaudiere.PuissanceUtiliseeEnkWh:.2f} kWh (Taux d'utilisation: {((chaudiere.PuissanceUtiliseeEnkWh/SimulationEnCours.NombreHeuresDeChauffe)/chaudiere.ProductionMaxkW)*100:.0f}%), Coût de la charge : {chaudiere.PuissanceUtiliseeEnkWh*chaudiere.PrixkWh:.2f} €")
+            st.write(f"- Description : {chaudiere.Description}")
 
 #Initialisation des prestations choisies
 prestationsChoisies = []
@@ -333,6 +324,7 @@ else:
 
 TopIndicateurProvInfA500,TopIndicateurProvInfA1500,TopIndicateurProvSupA1500=False,False,False
 for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tantiemes'] > 0].iterrows():
+    #Initialisation
     IDPrestationActuel=row["ID prestation"]
     MontantProvision=row["Provisions"]
     TopConsommationDeChauffage=row["TopConsommationDeChauffage"]
@@ -348,9 +340,10 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
         TopIndicateurProvInfA500=True
         st.write("**Les provisions suivantes sont inférieures à 500€HT par an, le syndic n'a plus l'obligation de consulter le conseil syndical.**")
     
+    #Début du bloc d'explication pour chaque provision
     with st.expander(f"**{row['Postes de provisions']} - Provision: {MontantProvision:.0f}€/an**"):
 
-        ConditionProvisionCommune=not(TopTemperature and TopConsommationDeChauffage) and not(IDPrestationActuel =="EAU")
+        ConditionProvisionCommune=not(TopConsommationDeChauffage) and not(IDPrestationActuel =="EAU")
 
         #Cas où on sélectionne des prestations dans la liste 
         if ConditionProvisionCommune:
@@ -371,12 +364,12 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
                 prestationsSelectionnees=[]       
                 st.write("Aucune prestation n'est associée à ce poste de provision, le calcul des charges se fera sur la base de la provision.") 
             #Calcul de la charge résultant des prestations choisies pour ce poste de provision
-            SimulationEnCours.Etape1aConstruireTableauDeCharges(IDPrestationActuel, prestationsSelectionnees)
+            SimulationEnCours.Etape2ConstruireTableauDeCharges(IDPrestationActuel, prestationsSelectionnees)
         else:#On met à 0 sinon ça ressort les prestations choisie des postes de provisions précédentes 
             prestationsSelectionnees=[]
 
         #Intégrer les charges par lots sélectionnés dans le tableau des charges 
-        SimulationEnCours.Etape2CalculerLesChargesParLot(IDPrestationActuel, ConsommationEnEauM3=consommationEauEnM3, topScenarioDeTemperature=TopTemperature)
+        SimulationEnCours.Etape3CalculerLesChargesParLot(IDPrestationActuel, ConsommationEnEauM3=consommationEauEnM3)
         
         #Récupérer le cout pour les lots
         coutResidence = SimulationEnCours.DfCharges.loc[SimulationEnCours.DfCharges['ID prestation'] == IDPrestationActuel, 'Charge'].iloc[0]
@@ -404,7 +397,7 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
                     st.latex(f"{coutResidence:.0f}\\times \\frac{{{row['Tantiemes']:.0f}}}{{{row['Tantiemes totaux']:.0f}}} = {coutLots:.2f}\\text{{ €/an}}")
                 elif SimulationEnCours.flagPasDeChauffageUtilise:
                     st.write(f"La température extérieure est supérieure à la température dans les lots sélectionnées et dans la résidence, donc il n'y a pas de consommation de chauffage.")
-                elif (TopTemperature and TopConsommationDeChauffage):
+                elif TopConsommationDeChauffage:
                     st.latex(f"{coutResidence:.0f} \\times \\frac{{{row['Tantiemes']:.0f}}}{{{row['Tantiemes totaux']:.0f}}} \\times \\left( 30\\% + 70\\% \\times \\frac{{{SimulationEnCours.TemperatureLot}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}}{{{SimulationEnCours.TemperatureResidence}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}} \\right) = {coutLots:.2f}\\text{{ €/an}}")
                 else:
                     st.write(f"La consommation d'eau courante est de {consommationEauEnM3} m3.")
