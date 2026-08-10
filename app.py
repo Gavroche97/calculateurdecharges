@@ -16,10 +16,17 @@ st.set_page_config(
 # Classe de Calculateur de charges de copropriété #
 ###################################################
 class Chaudiere:
-    def __init__(self,Label, IDPrestation, PrixkWh, ProductionMaxkW,Ordre,description=None):
+    def __init__(self,Label, IDPrestation, 
+            NomUnite,PrixUnite,kWhUnite, 
+            ProductionMaxkW,Ordre,description=None):
         self.Nom=Label
         self.IDPrestation=IDPrestation
-        self.PrixkWh=PrixkWh 
+
+        self.NomUniteCombustible=NomUnite
+        self.PrixUniteCombustible=PrixUnite
+        self.kWhUniteCombustible=kWhUnite
+
+        self.PrixkWh= PrixUnite/kWhUnite
         self.ProductionMaxkW=ProductionMaxkW
         self.PuissanceUtilisee=0
         self.OrdreUtilisation=Ordre
@@ -206,7 +213,11 @@ def ImporterDonneesDeLaResidence():
     LstChaudieres = [Chaudiere(
         row["Type de chaudière"], 
         row["ID poste de provision"],
-        row["Prix unitaire du kWh"],
+
+        row["Unité"],
+        row["Prix de l'unité"],
+        row["kWh par unité"],
+
         row["Production maximum en kW"],
         row["Ordre d'utilisation"],
         row["Description"]
@@ -257,7 +268,7 @@ DfLots, LstProvisions, LstPrestations,LaResidence, LstChaudieres = ImporterDonne
 LstLotsChoisis = st.multiselect(
     "Lots de la résidence à inclure dans le calcul des charges",
     options=DfLots["Numéro de lot"].tolist(),
-    format_func=lambda numeroDelot: f"🔹 {numeroDelot} - {DfLots[DfLots['Numéro de lot'] == numeroDelot]['Description'].iloc[0]}" ) 
+    format_func=lambda numeroDelot: f"{numeroDelot}: {DfLots[DfLots['Numéro de lot'] == numeroDelot]['Description'].iloc[0]}" ) 
 
 # Une condition pour afficher un message si le texte est rempli 
 if LstLotsChoisis:
@@ -273,16 +284,25 @@ SimulationEnCours=CalculateurDeCharges(LstLotsChoisis, LstProvisions,LaResidence
 st.subheader("2. Paramétrage des prestations et des charges",anchor="section-2")
 #Choix de simuler la consommation de chauffage à partir de la température
 TopTemperature=st.toggle("Paramétrer un scénario hivernal", key=f"toggle_temperature")
+col_temp1, col_temp2, col_temp3, col_nbHeures = st.columns(4)
+with col_temp2:
+    #Saisie de la consommation d'eau en m3 pour le calcul des charges
+    consommationEauEnM3=st.number_input("Saisissez la consommation d'eau individuelle d'eau totale (M3):",0,100000,100,key=f"consommationEauIndividuelles")
+with col_temp3:
+    consommationEauChaudeM3=st.number_input("Saisissez la consommation individuelle d'eau chaude inclus (M3):",0,100000,100,key=f"consommationEauChaudeIndividuelle")
+
 if TopTemperature:
-    col_temp1, col_temp2, col_temp3, col_nbHeures = st.columns(4)
+    #Déployer les zone de saisie des paramètres de températures
     with col_temp1:
+        consommationEauChaudeM3Residence=st.number_input("Saisissez la consommation d'eau chaude annuelle de toute la résidence (M3)",consommationEauChaudeM3,10000000,key=f"consommationEauChaudeResidence")
         temperatureExterieure = st.slider("Température à l'extérieur de la résidence (°C)", -100, 25, 10, key=f"temp_ext")
     with col_temp2:
         temperatureDuLot = st.slider("Température intérieure des lots (°C)", 0, 25, 19, key=f"temp_lot")
     with col_temp3:
         temperatureResidence = st.slider("Température moyenne de la résidence (°C)", 0, 25, 19, key=f"temp_res")
     with col_nbHeures:
-        nbHeuresDeChauffe=st.number_input("Saisissez le nombre d'heures de chauffe annuelles",0,10000,2000)
+        nbHeuresDeChauffe=st.number_input("Saisissez le nombre d'heures d'activité des chaufferies sur un an (heures)",0,10000,2000)
+    #Intégration des parametres
     SimulationEnCours.Etape1bParametrerLesTemperatures(
         TemperatureLot=temperatureDuLot,TemperatureExterieure=temperatureExterieure,TemperatureResidence=temperatureResidence,NbHeuresDeChauffe= nbHeuresDeChauffe)
     
@@ -292,7 +312,7 @@ if TopTemperature:
             st.write(f"Paramètres des chaudières :")
             for chaudiere in SimulationEnCours.ChaudieresDeLaResidence:
                 st.write(f"**Chaudière : {chaudiere.Nom}**")
-                st.write(f"- Production max. {chaudiere.ProductionMaxkW} kW, Prix: {chaudiere.PrixkWh:.4f} €/kWh")
+                st.write(f"- Production max. {chaudiere.ProductionMaxkW} kW, Prix du combustible: {chaudiere.PrixUniteCombustible:.2f}€/{chaudiere.NomUniteCombustible}, Prix standardisé: {chaudiere.PrixkWh:.4f} €/kWh")
                 st.write(f"- Puissance utilisée : {chaudiere.PuissanceUtiliseeEnkWh:.2f} kWh (Taux d'utilisation: {((chaudiere.PuissanceUtiliseeEnkWh/SimulationEnCours.NombreHeuresDeChauffe)/chaudiere.ProductionMaxkW)*100:.0f}%), Coût de la charge : {chaudiere.PuissanceUtiliseeEnkWh*chaudiere.PrixkWh:.2f} €")
                 st.write(f"- Description : {chaudiere.Description}")
 
@@ -310,7 +330,6 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
     IDPrestationActuel=row["ID prestation"]
     MontantProvision=row["Provisions"]
     TopConsommationDeChauffage=row["TopConsommationDeChauffage"]
-    consommationEauEnM3=0
 
     #Affichage des règles selon le montant de la provision
     if MontantProvision>1500 and not TopIndicateurProvSupA1500:
@@ -334,12 +353,12 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
             prestationsEnCours = [prestation for prestation in optionsDePrestations if prestation.TopPrestationChoisie]
             if optionsDePrestations:
                 prestationsSelectionnees = st.multiselect(
-                        f"Choisissez un ou plusieurs devis pour ce poste",
-                        options=optionsDePrestations,
-                        format_func=lambda prestation: f"🔹 {prestation.Nom} - {prestation.Prestataire} - {prestation.Cout:.2f} €/an",
-                        key=f"prestations_{IDPrestationActuel}",
-                        default=prestationsEnCours
-                    )
+                    f"Choisissez un ou plusieurs devis pour ce poste",
+                    options=optionsDePrestations,
+                    format_func=lambda prestation: f"🔹 {prestation.Nom} - {prestation.Prestataire} - {prestation.Cout:.2f} €/an",
+                    key=f"prestations_{IDPrestationActuel}",
+                    default=prestationsEnCours
+                )
                 #Ajout des prestations à la liste des prestations choisies pour le calcul des charges
                 prestationsChoisies.extend(prestationsSelectionnees)
             else: #Cas où il n'y a pas de prestations associées à la provision, on ne fait rien
@@ -347,11 +366,6 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
                 st.write("Aucune prestation n'est associée à ce poste de provision, le calcul des charges se fera sur la base de la provision.") 
             #Calcul de la charge résultant des prestations choisies pour ce poste de provision
             SimulationEnCours.Etape1aConstruireTableauDeCharges(IDPrestationActuel, prestationsSelectionnees)
-        elif IDPrestationActuel =="EAU" :
-            #reprendre ici
-            #Saisie de la consommation d'eau en m3 pour le calcul des charges
-            consommationEauEnM3=st.number_input("Saisissez la consommation d'eau en m3 pour calculer la charge d'eau courante:",0,100000,100,key=f"consommation_eau_{IDPrestationActuel}")
-            prestationsSelectionnees=[]
         else:#On met à 0 sinon ça ressort les prestations choisie des postes de provisions précédentes 
             prestationsSelectionnees=[]
 
