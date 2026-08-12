@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import psutil
 
 #A faire
 # - Intégrer calcul de l'ECS dans le chauffage
@@ -299,36 +300,32 @@ with st.sidebar:
     st.markdown("[🏬 Section 1 : Sélection des lots](#section-1)")
     st.markdown("[📋 Section 2 : Sélection des prestations](#section-2)")
     st.markdown("[💰 Section 3 : Visualisation des charges](#section-3)")
+    st.sidebar.write(f"RAM utilisée: {psutil.virtual_memory().percent} %")
+    st.sidebar.write(f"CPU: {psutil.cpu_percent()} %")
 
 # Titre de l'application
 st.title("Calculateur de charges de copropriété")
 
-# SECTION 1 : Sélection des lots
-st.subheader("1. Sélection des lots",anchor="section-1")
-
-st.write("Ce calculateur permet d'estimer les charges de copropriété en fonction des prestations sélectionnées et des tantièmes des lots choisis. Sélectionnez les lots et les prestations pour voir le calcul des charges:")
-
-# Un widget interactif : une boîte de saisie de texte
-LstLotsChoisis = st.multiselect(
-    "Lots de la résidence à inclure dans le calcul des charges",
-    options=DfLots["Numéro de lot"].tolist(),
-    format_func=lambda numeroDelot: DfLots[DfLots['Numéro de lot'] == numeroDelot]['Description'].iloc[0]) 
-
-# Une condition pour afficher un message si le texte est rempli 
-if LstLotsChoisis:
-    st.write("**Vous avez sélectionné les lots suivants :**")
-    for numeroDeLot in LstLotsChoisis:
-        # Chaque st.write crée automatiquement une nouvelle ligne
-        st.write(f"🔹 {numeroDeLot} - {DfLots[DfLots['Numéro de lot'] == numeroDeLot]['Description'].iloc[0]}")
-
-#Initialisation du calculateur de charges avec les lots choisis et les provisions
-SimulationEnCours=CalculateurDeCharges(LstLotsChoisis, LstProvisions,LaResidence,LstChaudieres)
-
-#SECTION 2 : Paramétrage des prestations et des charges 
-st.subheader("2. Paramétrage des prestations et des charges",anchor="section-2")
-#Choix de simuler la consommation de chauffage à partir de la température
-colGauche, colDroite= st.columns(2)
 with st.form("formulaireSaisieParametres"):
+    # SECTION 1 : Sélection des lots
+    st.subheader("1. Sélection des lots",anchor="section-1")
+
+    st.write("Ce calculateur permet d'estimer les charges de copropriété en fonction des prestations sélectionnées et des tantièmes des lots choisis. Sélectionnez les lots et les prestations pour voir le calcul des charges:")
+
+    # Un widget interactif : une boîte de saisie de texte
+    LstLotsChoisis = st.multiselect(
+        "Lots de la résidence à inclure dans le calcul des charges",
+        options=DfLots["Numéro de lot"].tolist(),
+        format_func=lambda numeroDelot: DfLots[DfLots['Numéro de lot'] == numeroDelot]['Description'].iloc[0]) 
+
+    #Initialisation du calculateur de charges avec les lots choisis et les provisions
+    SimulationEnCours=CalculateurDeCharges(LstLotsChoisis, LstProvisions,LaResidence,LstChaudieres)
+
+    #SECTION 2 : Paramétrage des prestations et des charges 
+    st.subheader("2. Paramétrage des prestations et des charges",anchor="section-2")
+    #Choix de simuler la consommation de chauffage à partir de la température
+    colGauche, colDroite= st.columns(2)
+
     with colDroite:
         consommationEauEnM3=st.number_input("Saisissez la consommation d'eau individuelle d'eau totale (M3):",0,100000,100,key=f"consommationEauIndividuelles")
         consommationEauChaudeM3=st.number_input("Saisissez la consommation individuelle d'eau chaude inclus (M3):",0,consommationEauEnM3,30,key=f"consommationEauChaudeIndividuelle")
@@ -349,6 +346,13 @@ SimulationEnCours.Etape1ParametrerLesTemperatures(
     temperatureDuLot,temperatureExterieure,temperatureResidence, 
     nbHeuresDeChauffe,  temperatureEauFroide, consommationEauChaudeM3,
     consommationEauChaudeM3Residence,volumeBallonEauChaudeM3,temperatureSeuilBallonEauChaude,temperatureEauChaude)
+
+# Une condition pour afficher un message si le texte est rempli 
+if LstLotsChoisis:
+    st.write("**Vous avez sélectionné les lots suivants :**")
+    for numeroDeLot in LstLotsChoisis:
+        # Chaque st.write crée automatiquement une nouvelle ligne
+        st.write(f"🔹 {numeroDeLot} - {DfLots[DfLots['Numéro de lot'] == numeroDeLot]['Description'].iloc[0]}")
 
 with st.expander("Paramètres de température et de chauffage",icon="♨️"):
     with st.container(border=True):
