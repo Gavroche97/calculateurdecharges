@@ -312,7 +312,7 @@ st.write("Ce calculateur permet d'estimer les charges de copropriété en foncti
 LstLotsChoisis = st.multiselect(
     "Lots de la résidence à inclure dans le calcul des charges",
     options=DfLots["Numéro de lot"].tolist(),
-    format_func=lambda numeroDelot: f"{numeroDelot}: {DfLots[DfLots['Numéro de lot'] == numeroDelot]['Description'].iloc[0]}" ) 
+    format_func=lambda numeroDelot: DfLots[DfLots['Numéro de lot'] == numeroDelot]['Description'].iloc[0]) 
 
 # Une condition pour afficher un message si le texte est rempli 
 if LstLotsChoisis:
@@ -328,26 +328,29 @@ SimulationEnCours=CalculateurDeCharges(LstLotsChoisis, LstProvisions,LaResidence
 st.subheader("2. Paramétrage des prestations et des charges",anchor="section-2")
 #Choix de simuler la consommation de chauffage à partir de la température
 colGauche, colDroite= st.columns(2)
-with colDroite:
-    consommationEauEnM3=st.number_input("Saisissez la consommation d'eau individuelle d'eau totale (M3):",0,100000,100,key=f"consommationEauIndividuelles")
-    consommationEauChaudeM3=st.number_input("Saisissez la consommation individuelle d'eau chaude inclus (M3):",0,consommationEauEnM3,30,key=f"consommationEauChaudeIndividuelle")
-    consommationEauChaudeM3Residence=st.number_input("Saisissez la consommation d'eau chaude annuelle de toute la résidence (M3):",consommationEauChaudeM3,1000000,1600,key=f"consommationEauChaudeResidence")
-    volumeBallonEauChaudeM3=st.number_input("Saisissez le volume du ballon de l'eau chaude sanitaire (M3)",0,10,3,key=f"num_volumeBallon")
-    nbHeuresDeChauffe=st.number_input("Saisissez le nombre d'heures d'activité du chauffage central durant un hiver (heures):",0,8760,2000,key=f"num_nbHeuresDeChauffe")
-with colGauche:
-    temperatureExterieure = st.slider("Température à l'extérieur de la résidence (°C)", -30, 25, 5, key=f"temp_ext")
-    temperatureResidence = st.slider("Température moyenne de la résidence (°C)", 0, 25, 19, key=f"temp_res")
-    temperatureDuLot = st.slider("Température intérieure des lots (°C)", 0, 25, 19, key=f"temp_lot")
-    temperatureEauFroide = st.slider("Température de l'eau froide à chauffer (°C)", -10, 50, 14, key=f"temp_eau_froide") 
-    temperatureSeuilBallonEauChaude=st.slider("Seuil de température du ballon d'eau (°C)", 50, 70, 52, key=f"temp_seuil_eauChaude") 
-    temperatureEauChaude=st.slider("Température de l'eau chaude sanitaire (°C)", 40, 70, 60, key=f"temp_eau_chaude")
+with st.form("formulaireSaisieParametres"):
+    with colDroite:
+        consommationEauEnM3=st.number_input("Saisissez la consommation d'eau individuelle d'eau totale (M3):",0,100000,100,key=f"consommationEauIndividuelles")
+        consommationEauChaudeM3=st.number_input("Saisissez la consommation individuelle d'eau chaude inclus (M3):",0,consommationEauEnM3,30,key=f"consommationEauChaudeIndividuelle")
+        consommationEauChaudeM3Residence=st.number_input("Saisissez la consommation d'eau chaude annuelle de toute la résidence (M3):",consommationEauChaudeM3,1000000,1600,key=f"consommationEauChaudeResidence")
+        volumeBallonEauChaudeM3=st.number_input("Saisissez le volume du ballon de l'eau chaude sanitaire (M3)",0,10,3,key=f"num_volumeBallon")
+        nbHeuresDeChauffe=st.number_input("Saisissez le nombre d'heures d'activité du chauffage central durant un hiver (heures):",0,8760,2000,key=f"num_nbHeuresDeChauffe")
+    with colGauche:
+        temperatureExterieure = st.slider("Température à l'extérieur de la résidence en hiver (°C)", -30, 25, 5, key=f"temp_ext")
+        temperatureResidence = st.slider("Température moyenne maintenue dans la résidence en hiver (°C)", 0, 25, 19, key=f"temp_res")
+        temperatureDuLot = st.slider("Température intérieure des lots en hiver (°C)", 0, 25, 19, key=f"temp_lot")
+        temperatureEauFroide = st.slider("Température de l'eau froide à chauffer (°C)", -10, 50, 14, key=f"temp_eau_froide") 
+        temperatureSeuilBallonEauChaude=st.slider("Seuil de température du ballon d'eau (°C)", 50, 70, 52, key=f"temp_seuil_eauChaude") 
+        temperatureEauChaude=st.slider("Température de l'eau chaude sanitaire moyenne (°C)", 40, 70, 60, key=f"temp_eau_chaude")
+    submit = st.form_submit_button("Calculer les charges", type="primary",  # bouton coloré (bleu par défaut)
+        use_container_width=True ) # prend toute la largeur
 #Intégration des parametres
 SimulationEnCours.Etape1ParametrerLesTemperatures(
     temperatureDuLot,temperatureExterieure,temperatureResidence, 
     nbHeuresDeChauffe,  temperatureEauFroide, consommationEauChaudeM3,
     consommationEauChaudeM3Residence,volumeBallonEauChaudeM3,temperatureSeuilBallonEauChaude,temperatureEauChaude)
 
-with st.expander("Voir les paramètres de température et de chauffage"):
+with st.expander("Paramètres de température et de chauffage",icon="♨️"):
     with st.container(border=True):
         st.write(f"Puissance de chauffe nécessaire pour le chauffage central : {SimulationEnCours.PuissanceDeChauffeNecessaireEnkWh:.0f} kWh")
         st.write(f"Puissance de chauffe nécéssaire pour l'eau chaude sanitaire (ECS): {SimulationEnCours.PuissanceEauChaudeNecessaireEnkWh:.0f} kWh")
@@ -364,6 +367,12 @@ with st.expander("Voir les paramètres de température et de chauffage"):
             st.write("Attention, il n'y a pas assez de puissance pour chauffer la résidence !")
         if SimulationEnCours.PuissanceDeChauffeEauRestantekWh>0:
             st.write("Attention, il n'y a pas assez de puissance pour chauffer l'eau chaude sanitaire !")
+if SimulationEnCours.PuissanceDeChauffeEauRestantekWh>0:
+    st.warning("Attention, il n'y a pas assez de puissance de chauffe pour chauffer les logements en hiver !", icon="⚠️")
+if SimulationEnCours.PuissanceDeChauffeEauRestantekWh>0:
+    st.warning("Attention, il n'y a pas assez de puissance de chauffe pour chauffer l'eau chaude sanitaire !", icon="⚠️")
+if SimulationEnCours.PuissanceDeChauffeEauRestantekWh==0 and SimulationEnCours.PuissanceDeChauffageRestantekWh==0:
+    st.success("La puissance de chauffage est suffisante pour l'eau chaude et le chauffage l'hiver", icon="✅")
 
 #Initialisation des prestations choisies
 prestationsChoisies = []
@@ -461,8 +470,8 @@ st.subheader("3. Résultat du calcul des charges",anchor="section-3")
 st.dataframe(SimulationEnCours.DfCharges.drop(columns=['ID prestation','Description longue',"TopConsommationDeChauffage", 'ID tantiemes','Description']))
 
 #Afficher les charges annuelles et mensuelles totales pour les lots sélectionnés
-st.write(f"**Total des charges annuelles pour les lots sélectionnés : {SimulationEnCours.DfCharges['Charges pour les lots sélectionnés'].sum():.2f} €**")
-st.write(f"**Total des charges mensuelles pour les lots sélectionnés : {SimulationEnCours.DfCharges['Charges pour les lots sélectionnés'].sum()/12:.2f} €**")
+st.success(f"**Total des charges annuelles pour les lots sélectionnés : {SimulationEnCours.DfCharges['Charges pour les lots sélectionnés'].sum():.2f} €**")
+st.success(f"**Total des charges mensuelles pour les lots sélectionnés : {SimulationEnCours.DfCharges['Charges pour les lots sélectionnés'].sum()/12:.2f} €**")
 
 # Création des camemberts avec Plotly
 CamembertChargesLots = px.pie(
