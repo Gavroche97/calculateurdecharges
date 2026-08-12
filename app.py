@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import psutil
+#import plotly.express as px
+#import psutil
 
 #A faire
 # - Intégrer calcul de l'ECS dans le chauffage
@@ -300,17 +300,16 @@ with st.sidebar:
     st.markdown("[🏬 Section 1 : Sélection des lots](#section-1)")
     st.markdown("[📋 Section 2 : Sélection des prestations](#section-2)")
     st.markdown("[💰 Section 3 : Visualisation des charges](#section-3)")
-    st.sidebar.write(f"RAM utilisée: {psutil.virtual_memory().percent} %")
-    st.sidebar.write(f"CPU: {psutil.cpu_percent()} %")
 
 # Titre de l'application
 st.title("Calculateur de charges de copropriété")
+st.write("Ce calculateur permet d'estimer les charges de copropriété en fonction des prestations sélectionnées et des tantièmes des lots choisis. Sélectionnez les lots et les prestations pour voir le calcul des charges:")
+#st.sidebar.write(f"RAM utilisée: {psutil.virtual_memory().percent} %")
+#st.sidebar.write(f"CPU: {psutil.cpu_percent()} %")
 
 with st.form("formulaireSaisieParametres"):
     # SECTION 1 : Sélection des lots
     st.subheader("1. Sélection des lots",anchor="section-1")
-
-    st.write("Ce calculateur permet d'estimer les charges de copropriété en fonction des prestations sélectionnées et des tantièmes des lots choisis. Sélectionnez les lots et les prestations pour voir le calcul des charges:")
 
     # Un widget interactif : une boîte de saisie de texte
     LstLotsChoisis = st.multiselect(
@@ -476,7 +475,7 @@ st.dataframe(SimulationEnCours.DfCharges.drop(columns=['ID prestation','Descript
 #Afficher les charges annuelles et mensuelles totales pour les lots sélectionnés
 st.success(f"**Total des charges annuelles pour les lots sélectionnés : {SimulationEnCours.DfCharges['Charges pour les lots sélectionnés'].sum():.2f} €**")
 st.success(f"**Total des charges mensuelles pour les lots sélectionnés : {SimulationEnCours.DfCharges['Charges pour les lots sélectionnés'].sum()/12:.2f} €**")
-
+'''
 # Création des camemberts avec Plotly
 CamembertChargesLots = px.pie(
     SimulationEnCours.DfCharges.drop(columns=['ID prestation', 'ID tantiemes','Description']), 
@@ -507,4 +506,4 @@ CamembertChargesLots.update_layout(
     margin=dict(b=150)
 )
 # Affichage dans Streamlit
-st.plotly_chart(CamembertChargesLots, use_container_width=True)
+st.plotly_chart(CamembertChargesLots, use_container_width=True)'''
