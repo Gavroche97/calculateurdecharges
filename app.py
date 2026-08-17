@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 #A faire
-# - Prendre en compte la perte lié à l'eau chaude qui circule en boucle dans le réseau
+# - Faire que les chaudière les moins chère tournent le plus possible
 #0.4 à 0.8 : Très bien isolé (RT2012 / BBC) - 0.9 à 1.1 : Isolation standard (Années 90/2000) - 1.2 à 1.6 : Mal isolé (Passoire thermique).
 #Mododèle Herz Firematic 120 d'une capacité de 120kW
 #Modèle Atlantic Varmax 2 140 d'une capacité de 140kW
@@ -108,7 +108,7 @@ class CalculateurDeCharges:
 
     def Etape1ParametrerLesTemperatures(self, TemperatureLot=19, TemperatureExterieure=19, TemperatureResidence=19,
         NbHeuresDeChauffe=2000, TemperatureEauFroide=15, consommationEauChaudeM3=30, consommationEauChaudeM3Residence=1600,
-        temperatureSeuilBallonEauChaude=52, temperatureEauChaude=60):
+        temperatureSeuilBallonEauChaude=52, temperatureEauChaude=60,tauxPerteTuyaux=20):
         """
         Méthode permettant de paramétrer les températures pour le calcul des charges de chauffage.
         La température de la résidence inclue celle des lots sélectionnées, la temperature des lots non sélectionnés n'est pas la température de la résidence 
@@ -124,13 +124,14 @@ class CalculateurDeCharges:
         self.ConsommationEauChaudeM3Residence=consommationEauChaudeM3Residence
         self.NombreHeuresDeChauffe=NbHeuresDeChauffe
         self.flagPasDeChauffageUtilise=max(TemperatureResidence,TemperatureLot)<=TemperatureExterieure
+        self.TauxPerteChaleurECS=tauxPerteTuyaux
 
         #Calcul de la puissance nécéssaire pour chauffer la résidence 
         self.PuissanceDeChauffeNecessaireEnWatt=self.CaracteristiquesDeLaResidence.VolumeTotalAChaufferM3*self.CaracteristiquesDeLaResidence.CoefficientIsolation*max(0,(self.TemperatureResidence-self.TemperatureExterieure))
         self.PuissanceDeChauffeNecessaireEnkWh=self.NombreHeuresDeChauffe*self.PuissanceDeChauffeNecessaireEnWatt/1000
 
         #Calcul de la puissance nécéssaire pour chauffer l'eau chaude sanitaire
-        self.PuissanceEauChaudeNecessaireEnkWh = self.ConsommationEauChaudeM3Residence * 1.163 * (self.TemperatureEauChaude-self.TemperatureEauFroide)
+        self.PuissanceEauChaudeNecessaireEnkWh = self.ConsommationEauChaudeM3Residence * 1.163 * (self.TemperatureEauChaude-self.TemperatureEauFroide) * (1+self.TauxPerteChaleurECS)
 
         #Calcul des charges pour chaque chaudière en fonction de l'ordre d'utilisation
         ###Initialisation de la puissance de chauffe restante à distribuer entre les chaudières
@@ -340,14 +341,16 @@ with st.form("formulaireSaisieParametres"):
     consommationEauEnM3=st.number_input("Saisissez la consommation d'eau totale chaude et froide des lots sélectionnés (M3):",0,100000,50,key=f"consommationEauIndividuelles")
 
     st.write("**Saisir les paramètre de l'eau chaude sanitaire**")
-    consommationEauChaudeM3Residence=st.number_input("Saisissez la consommation d'eau chaude annuelle de toute la résidence (M3):",0,1000000,1600,key=f"consommationEauChaudeResidence")
-    consommationEauChaudeM3=st.number_input("Saisissez la consommation d'eau chaude des lots sélectionnés (M3):",0,100,30,key=f"consommationEauChaudeIndividuelle")
+    
     colGauche,colMilieu, colDroite= st.columns(3)
     with colGauche:
+        consommationEauChaudeM3Residence=st.number_input("Saisissez la consommation d'eau chaude annuelle de toute la résidence (M3):",0,1000000,1600,key=f"consommationEauChaudeResidence")
         temperatureEauFroide = st.slider("Température moyenne de l'eau froide sanitaire à chauffer (°C)", -10, 50, 14, key=f"temp_eau_froide") 
     with colMilieu:
+        consommationEauChaudeM3=st.number_input("Saisissez la consommation d'eau chaude des lots sélectionnés (M3):",0,100,30,key=f"consommationEauChaudeIndividuelle")
         temperatureSeuilBallonEauChaude=st.slider("Seuil de température du ballon d'eau (°C)", 50, 70, 60, key=f"temp_seuil_eauChaude") 
     with colDroite:
+        tauxPerteTuyaux=st.slider("Perte de chaleur dû à la circulation dans les tuyaux (%)", 0, 20, 100, key=f"tauxDePerte")
         temperatureEauChaude=st.slider("Température maximum de l'eau chaude sanitaire (°C)", 40, 70, 65, key=f"temp_eau_chaude")
 
     st.write("**Saisir les prix des combustible de la chaufferie**")
@@ -374,7 +377,7 @@ with st.form("formulaireSaisieParametres"):
 SimulationEnCours.Etape1ParametrerLesTemperatures(
     temperatureDuLot,temperatureExterieure,temperatureResidence, 
     nbHeuresDeChauffe,  temperatureEauFroide, consommationEauChaudeM3,
-    consommationEauChaudeM3Residence,temperatureSeuilBallonEauChaude,temperatureEauChaude)
+    consommationEauChaudeM3Residence,temperatureSeuilBallonEauChaude,temperatureEauChaude,tauxPerteTuyaux)
 
 # Une condition pour afficher un message si le texte est rempli 
 if LstLotsChoisis:
