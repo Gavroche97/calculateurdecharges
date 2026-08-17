@@ -1,12 +1,8 @@
 import streamlit as st
 import pandas as pd
-#import plotly.express as px
-#import psutil
 
 #A faire
-# - Intégrer calcul de l'ECS dans le chauffage
-#    - Prendre en compte la perte lié à l'eau chaude qui circule en boucle dans le réseau
-#    - Corriger le calcul
+# - Prendre en compte la perte lié à l'eau chaude qui circule en boucle dans le réseau
 #0.4 à 0.8 : Très bien isolé (RT2012 / BBC) - 0.9 à 1.1 : Isolation standard (Années 90/2000) - 1.2 à 1.6 : Mal isolé (Passoire thermique).
 #Mododèle Herz Firematic 120 d'une capacité de 120kW
 #Modèle Atlantic Varmax 2 140 d'une capacité de 140kW
@@ -35,7 +31,7 @@ class Chaudiere:
         self.ProductionMaxkW=ProductionMaxkW
         self.OrdreUtilisation=0
         self.Description=description
-        self.SeuilFonctionnementPct=seuilFonctionnement
+        self.SeuilFonctionnementkW=seuilFonctionnement
         self.SeuilDureeActivationMn=seuilDureeActivation
 
         self.PuissanceUtiliseeEauChaudekWh=0
@@ -45,11 +41,12 @@ class Chaudiere:
         self.CreuxProductionkW=0
 
 class Residence:
-    def __init__(self,Label, VolumeTotalAChauffer, CoefficientIsolation,DfTantiemes):
+    def __init__(self,Label, VolumeTotalAChauffer, CoefficientIsolation,VolumeBallon,DfTantiemes):
         self.Nom=Label
         self.VolumeTotalAChaufferM3=VolumeTotalAChauffer
         self.CoefficientIsolation=CoefficientIsolation
         self.DfTantiemes=DfTantiemes
+        self.VolumeBallonEauChaudeM3=VolumeBallon
 
 class Prestation:
     """
@@ -111,7 +108,7 @@ class CalculateurDeCharges:
 
     def Etape1ParametrerLesTemperatures(self, TemperatureLot=19, TemperatureExterieure=19, TemperatureResidence=19,
         NbHeuresDeChauffe=2000, TemperatureEauFroide=15, consommationEauChaudeM3=30, consommationEauChaudeM3Residence=1600,
-        volumeBallonEauChaude=3,temperatureSeuilBallonEauChaude=52, temperatureEauChaude=60):
+        temperatureSeuilBallonEauChaude=52, temperatureEauChaude=60):
         """
         Méthode permettant de paramétrer les températures pour le calcul des charges de chauffage.
         La température de la résidence inclue celle des lots sélectionnées, la temperature des lots non sélectionnés n'est pas la température de la résidence 
@@ -125,7 +122,6 @@ class CalculateurDeCharges:
         self.TemperatureSeuilBallonEauChaude=temperatureSeuilBallonEauChaude
         self.ConsommationEauChaudeM3=consommationEauChaudeM3
         self.ConsommationEauChaudeM3Residence=consommationEauChaudeM3Residence
-        self.VolumeBallonEauChaudeM3=volumeBallonEauChaude
         self.NombreHeuresDeChauffe=NbHeuresDeChauffe
         self.flagPasDeChauffageUtilise=max(TemperatureResidence,TemperatureLot)<=TemperatureExterieure
 
@@ -141,18 +137,18 @@ class CalculateurDeCharges:
         self.PuissanceDeChauffageRestantekWh=self.PuissanceDeChauffeNecessaireEnkWh
         self.PuissanceDeChauffeEauRestantekWh=self.PuissanceEauChaudeNecessaireEnkWh
 
+        #-------------------------------------------------------------------------------------------------------
         #On calcule la puissance minimum pour chauffer l'ECS 
         for chaudiere in self.ChaudieresDeLaResidence:
-            #Calcul de la puissance de chauffe eau annuelle en kWh utilisée pour cette chaudière
+            ##-----------------------------------------------------------
+            ##Calcul de la puissance de chauffe eau annuelle en kWh utilisée pour cette chaudière
+            ##-----------------------------------------------------------
             puissanceEauChaudeMinimumChaudierekW=min(
                 chaudiere.ProductionMaxkW,
-                self.VolumeBallonEauChaudeM3*1.163*(self.TemperatureEauChaude-self.TemperatureSeuilBallonEauChaude)/(chaudiere.SeuilDureeActivationMn/60)
+                self.CaracteristiquesDeLaResidence.VolumeBallonEauChaudeM3*1.163*(self.TemperatureEauChaude-self.TemperatureSeuilBallonEauChaude)/(chaudiere.SeuilDureeActivationMn/60)
             )
-            ConditionChaudiereUtiliseePourECS=puissanceEauChaudeMinimumChaudierekW>chaudiere.SeuilFonctionnementPct*chaudiere.ProductionMaxkW and self.PuissanceDeChauffeEauRestantekWh>0
-            if ConditionChaudiereUtiliseePourECS: 
-                #Cette chaudière peut être utilisée pour chauffer toute l'eau chaude
-                heuresActivationReelles=self.PuissanceDeChauffeEauRestantekWh/puissanceEauChaudeMinimumChaudierekW
-
+            ConditionChaudiereUtiliseeHorsHiverPourECS=puissanceEauChaudeMinimumChaudierekW>chaudiere.SeuilFonctionnementkW and self.PuissanceDeChauffeEauRestantekWh>0
+            if ConditionChaudiereUtiliseeHorsHiverPourECS: 
                 chaudiere.PuissanceUtiliseeEauChaudekWh=min(
                     puissanceEauChaudeMinimumChaudierekW*8760,
                     self.PuissanceDeChauffeEauRestantekWh)
@@ -162,16 +158,20 @@ class CalculateurDeCharges:
                 chaudiere.CreuxProductionkW=puissanceEauChaudeMinimumChaudierekW
                 self.PuissanceDeChauffeEauRestantekWh-=chaudiere.PuissanceUtiliseeEauChaudekWh 
       
-            ##On calcule la puissance minimum pour chauffer la résidence
+            ##-----------------------------------------------------------
+            ##On calcule la puissance pour chauffer la résidence
+            ##-----------------------------------------------------------
             chaudiere.PuissanceUtiliseeChauffagekWh=min(
-                (chaudiere.ProductionMaxkW-(puissanceEauChaudeMinimumChaudierekW*ConditionChaudiereUtiliseePourECS))*self.NombreHeuresDeChauffe,
+                (chaudiere.ProductionMaxkW-(puissanceEauChaudeMinimumChaudierekW*ConditionChaudiereUtiliseeHorsHiverPourECS))*self.NombreHeuresDeChauffe,
                 self.PuissanceDeChauffageRestantekWh)
            
             chaudiere.PicProductionkW+=(chaudiere.PuissanceUtiliseeChauffagekWh/self.NombreHeuresDeChauffe)
-            chaudiere.CreuxProductionkW=puissanceEauChaudeMinimumChaudierekW*ConditionChaudiereUtiliseePourECS if puissanceEauChaudeMinimumChaudierekW*ConditionChaudiereUtiliseePourECS<chaudiere.CreuxProductionkW else chaudiere.CreuxProductionkW
+            chaudiere.CreuxProductionkW=puissanceEauChaudeMinimumChaudierekW*ConditionChaudiereUtiliseeHorsHiverPourECS if puissanceEauChaudeMinimumChaudierekW*ConditionChaudiereUtiliseeHorsHiverPourECS<chaudiere.CreuxProductionkW else chaudiere.CreuxProductionkW
             self.PuissanceDeChauffageRestantekWh-=chaudiere.PuissanceUtiliseeChauffagekWh
-              
+            
+            ##--------------------------------------------------------------------
             #Calcul du coût de la charge pour cette chaudière
+            ##--------------------------------------------------------------------
             coutDeLaCharge=(chaudiere.PuissanceUtiliseeChauffagekWh+chaudiere.PuissanceUtiliseeEauChaudekWh)*chaudiere.PrixkWh
 
             #Mise à jour dans le tableau des charges
@@ -252,6 +252,7 @@ def ImporterDonneesDeLaResidence():
         DonneesDeLaResidence["Residence"].iloc[0]["Label"],
         DonneesDeLaResidence["Residence"].iloc[0]["Volume à chauffer en m3"],
         DonneesDeLaResidence["Residence"].iloc[0]["Coefficient d'isolation"],
+        DonneesDeLaResidence["Residence"].iloc[0]["Volume ballon d'ECS m3"],
         DfLots
         )
 
@@ -265,7 +266,7 @@ def ImporterDonneesDeLaResidence():
 
         row["Production maximum en kW"],
         row["Description"],
-        row["Seuil de fonctionnement (%)"],
+        row["Seuil de fonctionnement (kW)"],
         row["Seuil de durée d'activation (mn)"]
         
         ) for index, row in DonneesDeLaResidence["Chauffage central"].iterrows()]      
@@ -298,8 +299,9 @@ DfLots, LstProvisions, LstPrestations,LaResidence, LstChaudieres = ImporterDonne
 with st.sidebar:
     st.title("Navigation")
     st.markdown("[🏬 Section 1 : Sélection des lots](#section-1)")
-    st.markdown("[📋 Section 2 : Sélection des prestations](#section-2)")
-    st.markdown("[💰 Section 3 : Visualisation des charges](#section-3)")
+    st.markdown("[♨️ Section 2 : Paramétrage du scénario](#section-2)")
+    st.markdown("[📋 Section 3 : Détail des provisions et prestations](#section-4)")    
+    st.markdown("[💰 Section 4 : Visualisation des charges](#section-4)")
 
 # Titre de l'application
 st.title("Calculateur de charges de copropriété")
@@ -307,6 +309,7 @@ st.write("Ce calculateur permet d'estimer les charges de copropriété en foncti
 #st.sidebar.write(f"RAM utilisée: {psutil.virtual_memory().percent} %")
 #st.sidebar.write(f"CPU: {psutil.cpu_percent()} %")
 
+#Formulaire avec les paramètres manuels
 with st.form("formulaireSaisieParametres"):
     # SECTION 1 : Sélection des lots
     st.subheader("1. Sélection des lots",anchor="section-1")
@@ -321,39 +324,57 @@ with st.form("formulaireSaisieParametres"):
     SimulationEnCours=CalculateurDeCharges(LstLotsChoisis, LstProvisions,LaResidence,LstChaudieres)
 
     #SECTION 2 : Paramétrage des prestations et des charges 
-    st.subheader("2. Paramétrage des prestations et des charges",anchor="section-2")
+    st.subheader("2. Paramétrage manuel",anchor="section-2")
     #Choix de simuler la consommation de chauffage à partir de la température
+    st.write("**Paramétrer l'hiver de la résidence**")
     colGauche, colDroite= st.columns(2)
-
-    with colDroite:
-        consommationEauEnM3=st.number_input("Saisissez la consommation d'eau individuelle d'eau totale (M3):",0,100000,100,key=f"consommationEauIndividuelles")
-        consommationEauChaudeM3=st.number_input("Saisissez la consommation individuelle d'eau chaude inclus (M3):",0,consommationEauEnM3,30,key=f"consommationEauChaudeIndividuelle")
-        consommationEauChaudeM3Residence=st.number_input("Saisissez la consommation d'eau chaude annuelle de toute la résidence (M3):",consommationEauChaudeM3,1000000,1600,key=f"consommationEauChaudeResidence")
-        volumeBallonEauChaudeM3=st.number_input("Saisissez le volume du ballon de l'eau chaude sanitaire (M3)",0,10,3,key=f"num_volumeBallon")
-        nbHeuresDeChauffe=st.number_input("Saisissez le nombre d'heures d'activité du chauffage central durant un hiver (heures):",0,8760,2000,key=f"num_nbHeuresDeChauffe")
-
-        listEnergies=[]
-        for index,chaudiere in enumerate(SimulationEnCours.ChaudieresDeLaResidence):
-            if chaudiere.NomUniteCombustible in listEnergies:
-                pass 
-            listEnergies.append(chaudiere.NomUniteCombustible)
-            prixUniteCombustibleSaisi=st.number_input(f"Saisissez le prix de {chaudiere.NomUniteCombustible} en €:",float(0),float(10000),chaudiere.PrixUniteCombustible,key=f"prixCombustible_{index}")
-            chaudiere.PrixUniteCombustible=prixUniteCombustibleSaisi
-
     with colGauche:
         temperatureExterieure = st.slider("Température moyenne à l'extérieur de la résidence en hiver (°C)", -30, 25, 5, key=f"temp_ext")
-        temperatureResidence = st.slider("Température moyenne maintenue dans la résidence en hiver (°C)", 0, 25, 19, key=f"temp_res")
         temperatureDuLot = st.slider("Température moyenne intérieure des lots en hiver (°C)", 0, 25, 19, key=f"temp_lot")
-        temperatureEauFroide = st.slider("Température moyenne de l'eau froide à chauffer (°C)", -10, 50, 14, key=f"temp_eau_froide") 
-        temperatureSeuilBallonEauChaude=st.slider("Seuil de température du ballon d'eau (°C)", 50, 70, 52, key=f"temp_seuil_eauChaude") 
-        temperatureEauChaude=st.slider("Température maximum de l'eau chaude sanitaire (°C)", 40, 70, 60, key=f"temp_eau_chaude")
+        
+    with colDroite:
+        temperatureResidence = st.slider("Température moyenne maintenue dans la résidence en hiver (°C)", 0, 25, 19, key=f"temp_res")
+        nbHeuresDeChauffe=st.number_input("Saisissez le nombre d'heures d'activité du chauffage central durant un hiver (heures):",0,8760,2000,key=f"num_nbHeuresDeChauffe")
+    
+    st.write("**Saisir la consommation d'eau totale des lots sélectionnés**")
+    consommationEauEnM3=st.number_input("Saisissez la consommation d'eau totale chaude et froide des lots sélectionnés (M3):",0,100000,50,key=f"consommationEauIndividuelles")
+
+    st.write("**Saisir les paramètre de l'eau chaude sanitaire**")
+    consommationEauChaudeM3Residence=st.number_input("Saisissez la consommation d'eau chaude annuelle de toute la résidence (M3):",0,1000000,1600,key=f"consommationEauChaudeResidence")
+    consommationEauChaudeM3=st.number_input("Saisissez la consommation d'eau chaude des lots sélectionnés (M3):",0,100,30,key=f"consommationEauChaudeIndividuelle")
+    colGauche,colMilieu, colDroite= st.columns(3)
+    with colGauche:
+        temperatureEauFroide = st.slider("Température moyenne de l'eau froide sanitaire à chauffer (°C)", -10, 50, 14, key=f"temp_eau_froide") 
+    with colMilieu:
+        temperatureSeuilBallonEauChaude=st.slider("Seuil de température du ballon d'eau (°C)", 50, 70, 60, key=f"temp_seuil_eauChaude") 
+    with colDroite:
+        temperatureEauChaude=st.slider("Température maximum de l'eau chaude sanitaire (°C)", 40, 70, 65, key=f"temp_eau_chaude")
+
+    st.write("**Saisir les prix des combustible de la chaufferie**")
+    colGauche, colDroite= st.columns(2)
+    listEnergies=[]
+    for index,chaudiere in enumerate(SimulationEnCours.ChaudieresDeLaResidence):
+        if chaudiere.NomUniteCombustible in listEnergies:
+            pass 
+        else:
+            listEnergies.append(chaudiere.NomUniteCombustible)
+            if index % 2>0:
+                with colDroite:
+                    prixUniteCombustibleSaisi=st.number_input(f"Saisissez le prix de {chaudiere.NomUniteCombustible} en €:",float(0),float(10000),chaudiere.PrixUniteCombustible,key=f"prixCombustible_{index}")
+            else:
+                with colGauche:
+                    prixUniteCombustibleSaisi=st.number_input(f"Saisissez le prix de {chaudiere.NomUniteCombustible} en €:",float(0),float(10000),chaudiere.PrixUniteCombustible,key=f"prixCombustible_{index}")
+            for chaudiereMAJPrix in SimulationEnCours.ChaudieresDeLaResidence:
+                if(chaudiereMAJPrix.NomUniteCombustible==chaudiere.NomUniteCombustible):
+                    chaudiereMAJPrix.PrixUniteCombustible=prixUniteCombustibleSaisi
+    
     submit = st.form_submit_button("Calculer les charges", type="primary",  # bouton coloré (bleu par défaut)
         use_container_width=True ) # prend toute la largeur
 #Intégration des parametres
 SimulationEnCours.Etape1ParametrerLesTemperatures(
     temperatureDuLot,temperatureExterieure,temperatureResidence, 
     nbHeuresDeChauffe,  temperatureEauFroide, consommationEauChaudeM3,
-    consommationEauChaudeM3Residence,volumeBallonEauChaudeM3,temperatureSeuilBallonEauChaude,temperatureEauChaude)
+    consommationEauChaudeM3Residence,temperatureSeuilBallonEauChaude,temperatureEauChaude)
 
 # Une condition pour afficher un message si le texte est rempli 
 if LstLotsChoisis:
@@ -364,14 +385,14 @@ if LstLotsChoisis:
 
 with st.expander("Paramètres de température et de chauffage",icon="♨️"):
     with st.container(border=True):
-        st.write(f"Puissance de chauffe nécessaire pour le chauffage central : {SimulationEnCours.PuissanceDeChauffeNecessaireEnkWh:.0f} kWh")
-        st.write(f"Puissance de chauffe nécéssaire pour l'eau chaude sanitaire (ECS): {SimulationEnCours.PuissanceEauChaudeNecessaireEnkWh:.0f} kWh")
+        st.write(f"Puissance de chauffe nécessaire pour le chauffage central : {SimulationEnCours.PuissanceDeChauffeNecessaireEnkWh:.1f} kWh")
+        st.write(f"Puissance de chauffe nécéssaire pour l'eau chaude sanitaire (ECS): {SimulationEnCours.PuissanceEauChaudeNecessaireEnkWh:.1f} kWh")
         st.write(f"Paramètres des chaudières :")
         for chaudiere in SimulationEnCours.ChaudieresDeLaResidence:
             st.write(f"**Chaudière : {chaudiere.Nom}**")
             st.write(f"- Production max. {chaudiere.ProductionMaxkW} kW, Prix du combustible: {chaudiere.PrixUniteCombustible:.2f}€/{chaudiere.NomUniteCombustible}, consommation: {(chaudiere.PuissanceUtiliseeChauffagekWh+chaudiere.PuissanceUtiliseeEauChaudekWh)/chaudiere.kWhUniteCombustible:.2f} {chaudiere.NomUniteCombustible}, Prix standardisé: {chaudiere.PrixkWh:.4f} €/kWh")
-            st.write(f"- Puissance utilisé au pic : {chaudiere.PicProductionkW:.2f} kW / Taux d'utilisation au pic: {(chaudiere.PicProductionkW/chaudiere.ProductionMaxkW)*100:.0f}%")
-            st.write(f"- Puissance utilisée au creux : {chaudiere.CreuxProductionkW:.0f} kW / Taux d'utilisation au creux: {(chaudiere.CreuxProductionkW/chaudiere.ProductionMaxkW)*100:.0f}%")
+            st.write(f"- Puissance utilisé au pic : {chaudiere.PicProductionkW:.1f} kW / Taux d'utilisation au pic: {(chaudiere.PicProductionkW/chaudiere.ProductionMaxkW)*100:.1f}%")
+            st.write(f"- Puissance utilisée au creux : {chaudiere.CreuxProductionkW:.1f} kW / Taux d'utilisation au creux: {(chaudiere.CreuxProductionkW/chaudiere.ProductionMaxkW)*100:.1f}%")
             st.write(f"- Coût de la charge lié au chauffage central : {chaudiere.PuissanceUtiliseeChauffagekWh*chaudiere.PrixkWh:.2f} €")
             st.write(f"- Coût de la charge lié à l'eau chaude sanitaire : {chaudiere.PuissanceUtiliseeEauChaudekWh*chaudiere.PrixkWh:.2f} €")
             st.write(f"- Description : {chaudiere.Description}")
@@ -383,6 +404,7 @@ if SimulationEnCours.PuissanceDeChauffeEauRestantekWh>0:
 if SimulationEnCours.PuissanceDeChauffeEauRestantekWh==0 and SimulationEnCours.PuissanceDeChauffageRestantekWh==0:
     st.success("La puissance de chauffage est suffisante pour l'eau chaude et le chauffage l'hiver", icon="✅")
 
+st.subheader("3. Détail des provisions et simulation de prestations",anchor="section-3")
 #Initialisation des prestations choisies
 prestationsChoisies = []
 
@@ -460,7 +482,8 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
                 st.write(f"Coût de la provision : {MontantProvision:.2f} €")
                 st.write(f"Coût de la charge pour la résidence : {coutResidence:.2f} €")
                 st.write(f"**Détail du calcul**")
-                st.write(f"Les lots sélectionnés corresponent au total à {row['Tantiemes']:.0f} tantièmes associés aux lots, pour {row['Tantiemes totaux']:.0f} tantièmes totaux de la résidence.")
+                if IDPrestationActuel!="EAU":
+                    st.write(f"Les lots sélectionnés corresponent au total à {row['Tantiemes']:.0f} tantièmes associés aux lots, pour {row['Tantiemes totaux']:.0f} tantièmes totaux de la résidence.")
                 
                 #Explication du calcul des charges pour les lots sélectionnés
                 if ConditionProvisionCommune:
@@ -474,43 +497,19 @@ for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tanti
                 st.write(f"Le coût de la charge pour les lots sélectionnés est donc de {coutLots:.2f} € par an ou {coutLots/12:.2f} € par mois.")
 
 #SECTION 3 : Résultat du calcul des charges
-st.subheader("3. Résultat du calcul des charges",anchor="section-3")
+st.subheader("4. Résultat du calcul des charges",anchor="section-4")
 #Afficher tableau des charges 
-with st.expander(f"Tableau des provisions et les charges calculées") :                 
-    st.table(SimulationEnCours.DfCharges.drop(columns=['ID prestation','Description longue',"TopConsommationDeChauffage", 'ID tantiemes','Description']))
+with st.expander(f"Tableau des provisions et les charges calculées") :     
+    df=SimulationEnCours.DfCharges.loc[SimulationEnCours.DfCharges["Charges pour les lots sélectionnés"] != 0]
+    st.dataframe(df.drop(columns=['ID prestation','Description longue',"TopConsommationDeChauffage", 'ID tantiemes','Description']),
+        column_config={
+            col: st.column_config.NumberColumn(col, format="%.2f €")
+            for col in ["Charge", "Provisions", "Charges pour les lots sélectionnés"]
+        }, 
+        hide_index=True,
+        height=(len(df) + 1) * 35 + 3
+    )
 
 #Afficher les charges annuelles et mensuelles totales pour les lots sélectionnés
 st.success(f"**Total des charges annuelles pour les lots sélectionnés : {SimulationEnCours.DfCharges['Charges pour les lots sélectionnés'].sum():.2f} €**")
 st.success(f"**Total des charges mensuelles pour les lots sélectionnés : {SimulationEnCours.DfCharges['Charges pour les lots sélectionnés'].sum()/12:.2f} €**")
-'''
-# Création des camemberts avec Plotly
-CamembertChargesLots = px.pie(
-    SimulationEnCours.DfCharges.drop(columns=['ID prestation', 'ID tantiemes','Description']), 
-    values="Charges pour les lots sélectionnés", 
-    names="Postes de provisions", 
-    title="Répartition des charges annuelles des lots choisis par catégorie",
-    hole=0.3  # Optionnel : ajoute un trou au centre (style Donut)
-)
-
-CamembertChargesLots.update_traces(
-    textposition="inside",          # Force le texte à rester dans les tranches
-    textinfo="percent+label",       # Ce qu'on affiche
-    insidetextorientation="radial"  # Oriente le texte pour gagner de la place
-)
-
-CamembertChargesLots.update_layout(
-    height=900,
-    legend=dict(
-        orientation="h",
-        yanchor="top",
-        y=-0.2,
-        xanchor="center",
-        x=0.5,
-        font=dict(size=10),      # Réduit la taille de la police
-        entrywidth=250,          # Augmente la largeur de chaque colonne (en pixels)
-        entrywidthmode="pixels"
-    ),
-    margin=dict(b=150)
-)
-# Affichage dans Streamlit
-st.plotly_chart(CamembertChargesLots, use_container_width=True)'''
