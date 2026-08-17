@@ -261,7 +261,7 @@ def ImporterDonneesDeLaResidence():
         row["ID poste de provision"],
 
         row["Unité"],
-        row["Prix de l'unité"],
+        row["Prix TTC de l'unité"],
         row["kWh par unité"],
 
         row["Production maximum en kW"],
@@ -363,7 +363,7 @@ with st.form("formulaireSaisieParametres"):
                     prixUniteCombustibleSaisi=st.number_input(f"Saisissez le prix de {chaudiere.NomUniteCombustible} en €:",float(0),float(10000),chaudiere.PrixUniteCombustible,key=f"prixCombustible_{index}")
             else:
                 with colGauche:
-                    prixUniteCombustibleSaisi=st.number_input(f"Saisissez le prix de {chaudiere.NomUniteCombustible} en €:",float(0),float(10000),chaudiere.PrixUniteCombustible,key=f"prixCombustible_{index}")
+                    prixUniteCombustibleSaisi=st.number_input(f"Saisissez le prix TTC de {chaudiere.NomUniteCombustible} en €:",float(0),float(10000),chaudiere.PrixUniteCombustible,key=f"prixCombustible_{index}")
             for chaudiereMAJPrix in SimulationEnCours.ChaudieresDeLaResidence:
                 if(chaudiereMAJPrix.NomUniteCombustible==chaudiere.NomUniteCombustible):
                     chaudiereMAJPrix.PrixUniteCombustible=prixUniteCombustibleSaisi
