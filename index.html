@@ -1,22 +1,23 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
   <title>Calculateur de charges</title>
   <link
     rel="stylesheet"
     href="https://cdn.jsdelivr.net/npm/@stlite/browser@0.65.0/build/stlite.css"
   />
-</head>
-<body>
-  <streamlit-app entrypoint="app.py">
-requirements: pandas
-    <streamlit-app-file name="app.py" url="./app.py"></streamlit-app-file>
-  </streamlit-app>
-
   <script
     type="module"
     src="https://cdn.jsdelivr.net/npm/@stlite/browser@0.65.0/build/stlite.js"
   ></script>
+</head>
+<body>
+  <streamlit-app src="./app.py">
+    <app-requirements>
+      pandas
+    </app-requirements>
+  </streamlit-app>
 </body>
 </html>
