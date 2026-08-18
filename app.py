@@ -131,7 +131,7 @@ class CalculateurDeCharges:
         self.PuissanceDeChauffeNecessaireEnkWh=self.NombreHeuresDeChauffe*self.PuissanceDeChauffeNecessaireEnWatt/1000
 
         #Calcul de la puissance nécéssaire pour chauffer l'eau chaude sanitaire
-        self.PuissanceEauChaudeNecessaireEnkWh = self.ConsommationEauChaudeM3Residence * 1.163 * (self.TemperatureEauChaude-self.TemperatureEauFroide) * (1+self.TauxPerteChaleurECS)
+        self.PuissanceEauChaudeNecessaireEnkWh = self.ConsommationEauChaudeM3Residence * 1.163 * (self.TemperatureEauChaude-self.TemperatureEauFroide) * (1+(self.TauxPerteChaleurECS/100))
 
         #Calcul des charges pour chaque chaudière en fonction de l'ordre d'utilisation
         ###Initialisation de la puissance de chauffe restante à distribuer entre les chaudières
@@ -350,7 +350,7 @@ with st.form("formulaireSaisieParametres"):
         consommationEauChaudeM3=st.number_input("Saisissez la consommation d'eau chaude des lots sélectionnés (M3):",0,100,30,key=f"consommationEauChaudeIndividuelle")
         temperatureSeuilBallonEauChaude=st.slider("Seuil de température du ballon d'eau (°C)", 50, 70, 60, key=f"temp_seuil_eauChaude") 
     with colDroite:
-        tauxPerteTuyaux=st.slider("Perte de chaleur dû à la circulation dans les tuyaux (%)", 0, 20, 100, key=f"tauxDePerte")
+        tauxPerteTuyaux=st.slider("Perte de chaleur dû à la circulation dans les tuyaux (%)", 5, 20, 100, key=f"tauxDePerte")
         temperatureEauChaude=st.slider("Température maximum de l'eau chaude sanitaire (°C)", 40, 70, 65, key=f"temp_eau_chaude")
 
     st.write("**Saisir les prix des combustible de la chaufferie**")
