@@ -323,6 +323,7 @@ with st.form("formulaireSaisieParametres"):
     LstLotsChoisis = st.multiselect(
         "Lots de la résidence à inclure dans le calcul des charges",
         options=DfLots["Numéro de lot"].tolist(),
+        default=DfLots[DfLots['Numéro de lot'] == 113],
         format_func=lambda numeroDelot: DfLots[DfLots['Numéro de lot'] == numeroDelot]['Description'].iloc[0]) 
 
     #Initialisation du calculateur de charges avec les lots choisis et les provisions
@@ -349,7 +350,7 @@ with st.form("formulaireSaisieParametres"):
     colGauche,colMilieu, colDroite= st.columns(3)
     with colGauche:
         consommationEauChaudeM3Residence=st.number_input("Saisissez la consommation d'eau chaude annuelle de toute la résidence (M3):",0,1000000,1600,key=f"consommationEauChaudeResidence")
-        temperatureEauFroide = st.slider("Température moyenne de l'eau froide sanitaire à chauffer (°C)", -10, 50, 14, key=f"temp_eau_froide") 
+        temperatureEauFroide = st.slider("Température moyenne de l'eau froide sanitaire à chauffer (°C)", -10, 40, 14, key=f"temp_eau_froide") 
     with colMilieu:
         consommationEauChaudeM3=st.number_input("Saisissez la consommation d'eau chaude des lots sélectionnés (M3):",0,100,30,key=f"consommationEauChaudeIndividuelle")
         temperatureSeuilBallonEauChaude=st.slider("Seuil de température du ballon d'eau (°C)", 50, 70, 60, key=f"temp_seuil_eauChaude") 
