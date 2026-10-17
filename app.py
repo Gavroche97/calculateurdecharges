@@ -307,8 +307,8 @@ with st.sidebar:
 # Titre de l'application
 st.title("Calculateur de charges de copropriété")
 st.write("""
-Ce calculateur permet d'estimer les charges de copropriété en fonction des prestations sélectionnées 
-et des tantièmes des lots choisis. A utiliser de préférence sur un ordinateur plutôt que sur smartphone.
+Ce calculateur permet d'estimer les charges de copropriété en fonction des prestations sélectionnées et des tantièmes des lots choisis. 
+A utiliser de préférence sur un ordinateur plutôt que sur smartphone. Les prestation sélectionnées par défaut sont celles votées en AG ou par le conseil syndical sur procuration.
 Sélectionnez les lots et les prestations pour voir le calcul des charges:
 """)
 #st.sidebar.write(f"RAM utilisée: {psutil.virtual_memory().percent} %")
