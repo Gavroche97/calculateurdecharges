@@ -323,7 +323,8 @@ with st.form("formulaireSaisieParametres"):
     LstLotsChoisis = st.multiselect(
         "Lots de la résidence à inclure dans le calcul des charges",
         options=DfLots["Numéro de lot"].tolist(),
-        default=DfLots[DfLots['Numéro de lot'] == 113],
+        default=[113],
+
         format_func=lambda numeroDelot: DfLots[DfLots['Numéro de lot'] == numeroDelot]['Description'].iloc[0]) 
 
     #Initialisation du calculateur de charges avec les lots choisis et les provisions
