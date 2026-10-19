@@ -195,7 +195,7 @@ class CalculateurDeCharges:
             CoutReelDuPosteDeProvision += prestation.Cout
         #Si aucune prestation n'est associée à la provision, on prend le coût de la provision
         #On ajoute le coût réel du poste de provision aux charges totales
-        self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charge'] = CoutReelDuPosteDeProvision if CoutReelDuPosteDeProvision > 0 else self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Provisions'].iloc[0]
+        self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Charge'] = CoutReelDuPosteDeProvision if len(self.PrestationsSelectionnees)>0 else self.DfCharges.loc[self.DfCharges['ID prestation'] == IDPrestation, 'Provisions'].iloc[0]
 
     def Etape3CalculerLesChargesParLot (self,IDPrestation,ConsommationEnEauM3=0):
         """
