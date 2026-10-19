@@ -354,10 +354,10 @@ with st.form("formulaireSaisieParametres"):
         temperatureEauFroide = st.slider("Température moyenne de l'eau froide sanitaire à chauffer (°C)", -10, 40, 14, key=f"temp_eau_froide") 
     with colMilieu:
         consommationEauChaudeM3=st.number_input("Saisissez la consommation d'eau chaude des lots sélectionnés (M3):",0,100,30,key=f"consommationEauChaudeIndividuelle")
-        temperatureSeuilBallonEauChaude=st.slider("Seuil de température du ballon d'eau (°C)", 50, 70, 60, key=f"temp_seuil_eauChaude") 
+        temperatureSeuilBallonEauChaude=st.slider("Seuil de température du ballon d'eau (°C)", 50, 70, 55, key=f"temp_seuil_eauChaude") 
     with colDroite:
         tauxPerteTuyaux=st.slider("Perte de chaleur dû à la circulation dans les tuyaux (%)", 5, 100, 20, key=f"tauxDePerte")
-        temperatureEauChaude=st.slider("Température maximum de l'eau chaude sanitaire (°C)", 40, 70, 65, key=f"temp_eau_chaude")
+        temperatureEauChaude=st.slider("Température maximum de l'eau chaude sanitaire (°C)", 40, 70, 60, key=f"temp_eau_chaude")
 
     st.write("**Saisir les prix des combustible de la chaufferie**")
     colGauche, colDroite= st.columns(2)
