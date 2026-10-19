@@ -376,7 +376,7 @@ with st.form("formulaireSaisieParametres"):
             for chaudiereMAJPrix in SimulationEnCours.ChaudieresDeLaResidence:
                 if(chaudiereMAJPrix.NomUniteCombustible==chaudiere.NomUniteCombustible):
                     chaudiereMAJPrix.PrixUniteCombustible=prixUniteCombustibleSaisi
-    
+    st.write("**Lorsque vous avez terminé de paramétrer la simulation, cliquez sur le bouton suivant:**")
     submit = st.form_submit_button("Calculer les charges", type="primary",  # bouton coloré (bleu par défaut)
         use_container_width=True ) # prend toute la largeur
 #Intégration des parametres
