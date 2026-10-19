@@ -377,7 +377,8 @@ with st.form("formulaireSaisieParametres"):
                 if(chaudiereMAJPrix.NomUniteCombustible==chaudiere.NomUniteCombustible):
                     chaudiereMAJPrix.PrixUniteCombustible=prixUniteCombustibleSaisi
     st.write("**Lorsque vous avez terminé de paramétrer la simulation, cliquez sur le bouton suivant:**")
-    submit = st.form_submit_button("Calculer les charges", type="primary",  # bouton coloré (bleu par défaut)
+    submit = st.form_submit_button("Calculer les charges", 
+        type="primary",  # bouton coloré (bleu par défaut)
         use_container_width=True ) # prend toute la largeur
 #Intégration des parametres
 SimulationEnCours.Etape1ParametrerLesTemperatures(
@@ -386,139 +387,140 @@ SimulationEnCours.Etape1ParametrerLesTemperatures(
     consommationEauChaudeM3Residence,temperatureSeuilBallonEauChaude,temperatureEauChaude,tauxPerteTuyaux)
 
 # Une condition pour afficher un message si le texte est rempli 
-if LstLotsChoisis:
+if submit:
+    st.title("Résultats de la simulation")
     st.write("**Vous avez sélectionné les lots suivants :**")
     for numeroDeLot in LstLotsChoisis:
         # Chaque st.write crée automatiquement une nouvelle ligne
         st.write(f"🔹 {numeroDeLot} - {DfLots[DfLots['Numéro de lot'] == numeroDeLot]['Description'].iloc[0]}")
 
-with st.expander("Paramètres de température et de chauffage",icon="♨️"):
-    with st.container(border=True):
-        st.write(f"Puissance de chauffe nécessaire pour le chauffage central : {SimulationEnCours.PuissanceDeChauffeNecessaireEnkWh:.1f} kWh")
-        st.write(f"Puissance de chauffe nécéssaire pour l'eau chaude sanitaire (ECS): {SimulationEnCours.PuissanceEauChaudeNecessaireEnkWh:.1f} kWh")
-        st.write(f"Paramètres des chaudières :")
-        for chaudiere in SimulationEnCours.ChaudieresDeLaResidence:
-            st.write(f"**Chaudière : {chaudiere.Nom}**")
-            st.write(f"- Production max. {chaudiere.ProductionMaxkW} kW, Prix du combustible: {chaudiere.PrixUniteCombustible:.2f}€/{chaudiere.NomUniteCombustible}, consommation: {(chaudiere.PuissanceUtiliseeChauffagekWh+chaudiere.PuissanceUtiliseeEauChaudekWh)/chaudiere.kWhUniteCombustible:.2f} {chaudiere.NomUniteCombustible}, Prix standardisé: {chaudiere.PrixkWh:.4f} €/kWh")
-            st.write(f"- Puissance utilisé au pic : {chaudiere.PicProductionkW:.1f} kW / Taux d'utilisation au pic: {(chaudiere.PicProductionkW/chaudiere.ProductionMaxkW)*100:.1f}%")
-            st.write(f"- Puissance utilisée au creux : {chaudiere.CreuxProductionkW:.1f} kW / Taux d'utilisation au creux: {(chaudiere.CreuxProductionkW/chaudiere.ProductionMaxkW)*100:.1f}%")
-            st.write(f"- Coût de la charge lié au chauffage central : {chaudiere.PuissanceUtiliseeChauffagekWh*chaudiere.PrixkWh:.2f} €")
-            st.write(f"- Coût de la charge lié à l'eau chaude sanitaire : {chaudiere.PuissanceUtiliseeEauChaudekWh*chaudiere.PrixkWh:.2f} €")
-            st.write(f"- Description : {chaudiere.Description}")
+    with st.expander("Paramètres de température et de chauffage",icon="♨️"):
+        with st.container(border=True):
+            st.write(f"Puissance de chauffe nécessaire pour le chauffage central : {SimulationEnCours.PuissanceDeChauffeNecessaireEnkWh:.1f} kWh")
+            st.write(f"Puissance de chauffe nécéssaire pour l'eau chaude sanitaire (ECS): {SimulationEnCours.PuissanceEauChaudeNecessaireEnkWh:.1f} kWh")
+            st.write(f"Paramètres des chaudières :")
+            for chaudiere in SimulationEnCours.ChaudieresDeLaResidence:
+                st.write(f"**Chaudière : {chaudiere.Nom}**")
+                st.write(f"- Production max. {chaudiere.ProductionMaxkW} kW, Prix du combustible: {chaudiere.PrixUniteCombustible:.2f}€/{chaudiere.NomUniteCombustible}, consommation: {(chaudiere.PuissanceUtiliseeChauffagekWh+chaudiere.PuissanceUtiliseeEauChaudekWh)/chaudiere.kWhUniteCombustible:.2f} {chaudiere.NomUniteCombustible}, Prix standardisé: {chaudiere.PrixkWh:.4f} €/kWh")
+                st.write(f"- Puissance utilisé au pic : {chaudiere.PicProductionkW:.1f} kW / Taux d'utilisation au pic: {(chaudiere.PicProductionkW/chaudiere.ProductionMaxkW)*100:.1f}%")
+                st.write(f"- Puissance utilisée au creux : {chaudiere.CreuxProductionkW:.1f} kW / Taux d'utilisation au creux: {(chaudiere.CreuxProductionkW/chaudiere.ProductionMaxkW)*100:.1f}%")
+                st.write(f"- Coût de la charge lié au chauffage central : {chaudiere.PuissanceUtiliseeChauffagekWh*chaudiere.PrixkWh:.2f} €")
+                st.write(f"- Coût de la charge lié à l'eau chaude sanitaire : {chaudiere.PuissanceUtiliseeEauChaudekWh*chaudiere.PrixkWh:.2f} €")
+                st.write(f"- Description : {chaudiere.Description}")
 
-if SimulationEnCours.PuissanceDeChauffageRestantekWh>0:
-    st.warning("Attention, il n'y a pas assez de puissance de chauffe pour chauffer les logements en hiver !", icon="❗")
-if SimulationEnCours.PuissanceDeChauffeEauRestantekWh>0:
-    st.warning("Attention, il n'y a pas assez de puissance de chauffe pour chauffer l'eau chaude sanitaire !", icon="❗")
-if SimulationEnCours.PuissanceDeChauffeEauRestantekWh==0 and SimulationEnCours.PuissanceDeChauffageRestantekWh==0:
-    st.success("La puissance de chauffage est suffisante pour l'eau chaude et le chauffage l'hiver", icon="✅")
+    if SimulationEnCours.PuissanceDeChauffageRestantekWh>0:
+        st.warning("Attention, il n'y a pas assez de puissance de chauffe pour chauffer les logements en hiver !", icon="❗")
+    if SimulationEnCours.PuissanceDeChauffeEauRestantekWh>0:
+        st.warning("Attention, il n'y a pas assez de puissance de chauffe pour chauffer l'eau chaude sanitaire !", icon="❗")
+    if SimulationEnCours.PuissanceDeChauffeEauRestantekWh==0 and SimulationEnCours.PuissanceDeChauffageRestantekWh==0:
+        st.success("La puissance de chauffage est suffisante pour l'eau chaude et le chauffage l'hiver", icon="✅")
 
-st.subheader("3. Détail des provisions et simulation de prestations",anchor="section-3")
-#Initialisation des prestations choisies
-prestationsChoisies = []
+    st.subheader("3. Détail des provisions et simulation de prestations",anchor="section-3")
+    #Initialisation des prestations choisies
+    prestationsChoisies = []
 
-#Afficher les provisions et donner l'option de sélectionner une prestation s'il y a en a une
-if SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tantiemes'] > 0].empty:
-    st.write("Pas de lots sélectionnés.")
-else:
-    st.write("Pour chaque poste de provision, vous pouvez sélectionner une ou plusieurs prestations:")
+    #Afficher les provisions et donner l'option de sélectionner une prestation s'il y a en a une
+    if SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tantiemes'] > 0].empty:
+        st.write("Pas de lots sélectionnés.")
+    else:
+        st.write("Pour chaque poste de provision, vous pouvez sélectionner une ou plusieurs prestations:")
 
-TopIndicateurProvInfA500,TopIndicateurProvInfA1500,TopIndicateurProvSupA1500=False,False,False
-for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tantiemes'] > 0].iterrows():
-    #Initialisation
-    IDPrestationActuel=row["ID prestation"]
-    MontantProvision=row["Provisions"]
-    TopConsommationDeChauffage=row["TopConsommationDeChauffage"]
+    TopIndicateurProvInfA500,TopIndicateurProvInfA1500,TopIndicateurProvSupA1500=False,False,False
+    for index, row in SimulationEnCours.DfCharges[SimulationEnCours.DfCharges['Tantiemes'] > 0].iterrows():
+        #Initialisation
+        IDPrestationActuel=row["ID prestation"]
+        MontantProvision=row["Provisions"]
+        TopConsommationDeChauffage=row["TopConsommationDeChauffage"]
 
-    #Affichage des règles selon le montant de la provision
-    if MontantProvision>1500 and not TopIndicateurProvSupA1500:
-        TopIndicateurProvSupA1500=True
-        st.write("**Les provisions suivantes sont supérieures à 1500€HT par an, le syndic est dans l'obligation de mettre en concurrence les fournisseurs et de consulter le conseil syndical.**")
-    if MontantProvision<=1500 and not TopIndicateurProvInfA1500:
-        TopIndicateurProvInfA1500=True
-        st.write("**Les provisions suivantes sont inférieures à 1500€HT par an, le syndic n'est plus dans l'obligation de mettre en concurrence les fournisseurs.**")
-    if MontantProvision<=500 and not TopIndicateurProvInfA500:
-        TopIndicateurProvInfA500=True
-        st.write("**Les provisions suivantes sont inférieures à 500€HT par an, le syndic n'a plus l'obligation de consulter le conseil syndical.**")
-    
-    #Début du bloc d'explication pour chaque provision
-    with st.expander(f"**{row['Postes de provisions']} - Provision: {MontantProvision:.0f}€/an**"):
-
-        ConditionProvisionCommune=not(TopConsommationDeChauffage) and not(IDPrestationActuel =="EAU")
-
-        #Cas où on sélectionne des prestations dans la liste 
-        if ConditionProvisionCommune:
-            #Valeur définie selon les prestations choisies  
-            optionsDePrestations = [prestation for prestation in LstPrestations if prestation.IDPrestation == IDPrestationActuel]
-            prestationsEnCours = [prestation for prestation in optionsDePrestations if prestation.TopPrestationChoisie]
-            if optionsDePrestations:
-                prestationsSelectionnees = st.multiselect(
-                    f"Choisissez un ou plusieurs devis pour ce poste",
-                    options=optionsDePrestations,
-                    format_func=lambda prestation: f"🔹 {prestation.Nom} - {prestation.Prestataire} - {prestation.Cout:.2f} €/an",
-                    key=f"prestations_{IDPrestationActuel}",
-                    default=prestationsEnCours
-                )
-                #Ajout des prestations à la liste des prestations choisies pour le calcul des charges
-                prestationsChoisies.extend(prestationsSelectionnees)
-            else: #Cas où il n'y a pas de prestations associées à la provision, on ne fait rien
-                prestationsSelectionnees=[]       
-                st.write("Aucune prestation n'est associée à ce poste de provision, le calcul des charges se fera sur la base de la provision.") 
-            #Calcul de la charge résultant des prestations choisies pour ce poste de provision
-            SimulationEnCours.Etape2ConstruireTableauDeCharges(IDPrestationActuel, prestationsSelectionnees)
-        else:#On met à 0 sinon ça ressort les prestations choisie des postes de provisions précédentes 
-            prestationsSelectionnees=[]
-
-        #Intégrer les charges par lots sélectionnés dans le tableau des charges 
-        SimulationEnCours.Etape3CalculerLesChargesParLot(IDPrestationActuel, ConsommationEnEauM3=consommationEauEnM3)
+        #Affichage des règles selon le montant de la provision
+        if MontantProvision>1500 and not TopIndicateurProvSupA1500:
+            TopIndicateurProvSupA1500=True
+            st.write("**Les provisions suivantes sont supérieures à 1500€HT par an, le syndic est dans l'obligation de mettre en concurrence les fournisseurs et de consulter le conseil syndical.**")
+        if MontantProvision<=1500 and not TopIndicateurProvInfA1500:
+            TopIndicateurProvInfA1500=True
+            st.write("**Les provisions suivantes sont inférieures à 1500€HT par an, le syndic n'est plus dans l'obligation de mettre en concurrence les fournisseurs.**")
+        if MontantProvision<=500 and not TopIndicateurProvInfA500:
+            TopIndicateurProvInfA500=True
+            st.write("**Les provisions suivantes sont inférieures à 500€HT par an, le syndic n'a plus l'obligation de consulter le conseil syndical.**")
         
-        #Récupérer le cout pour les lots
-        coutResidence = SimulationEnCours.DfCharges.loc[SimulationEnCours.DfCharges['ID prestation'] == IDPrestationActuel, 'Charge'].iloc[0]
-        coutLots=SimulationEnCours.DfCharges.loc[SimulationEnCours.DfCharges['ID prestation'] == IDPrestationActuel, 'Charges pour les lots sélectionnés'].iloc[0]
-        
-        #Boucles d'explication des charges
-        colPrestation, colSynthese = st.columns(2)
-        with colPrestation:
-            st.write(f"{row['Description']}")
-            st.write(f"{row['Description longue']}")
-            for prestation in prestationsSelectionnees:
+        #Début du bloc d'explication pour chaque provision
+        with st.expander(f"**{row['Postes de provisions']} - Provision: {MontantProvision:.0f}€/an**"):
+
+            ConditionProvisionCommune=not(TopConsommationDeChauffage) and not(IDPrestationActuel =="EAU")
+
+            #Cas où on sélectionne des prestations dans la liste 
+            if ConditionProvisionCommune:
+                #Valeur définie selon les prestations choisies  
+                optionsDePrestations = [prestation for prestation in LstPrestations if prestation.IDPrestation == IDPrestationActuel]
+                prestationsEnCours = [prestation for prestation in optionsDePrestations if prestation.TopPrestationChoisie]
+                if optionsDePrestations:
+                    prestationsSelectionnees = st.multiselect(
+                        f"Choisissez un ou plusieurs devis pour ce poste",
+                        options=optionsDePrestations,
+                        format_func=lambda prestation: f"🔹 {prestation.Nom} - {prestation.Prestataire} - {prestation.Cout:.2f} €/an",
+                        key=f"prestations_{IDPrestationActuel}",
+                        default=prestationsEnCours
+                    )
+                    #Ajout des prestations à la liste des prestations choisies pour le calcul des charges
+                    prestationsChoisies.extend(prestationsSelectionnees)
+                else: #Cas où il n'y a pas de prestations associées à la provision, on ne fait rien
+                    prestationsSelectionnees=[]       
+                    st.write("Aucune prestation n'est associée à ce poste de provision, le calcul des charges se fera sur la base de la provision.") 
+                #Calcul de la charge résultant des prestations choisies pour ce poste de provision
+                SimulationEnCours.Etape2ConstruireTableauDeCharges(IDPrestationActuel, prestationsSelectionnees)
+            else:#On met à 0 sinon ça ressort les prestations choisie des postes de provisions précédentes 
+                prestationsSelectionnees=[]
+
+            #Intégrer les charges par lots sélectionnés dans le tableau des charges 
+            SimulationEnCours.Etape3CalculerLesChargesParLot(IDPrestationActuel, ConsommationEnEauM3=consommationEauEnM3)
+            
+            #Récupérer le cout pour les lots
+            coutResidence = SimulationEnCours.DfCharges.loc[SimulationEnCours.DfCharges['ID prestation'] == IDPrestationActuel, 'Charge'].iloc[0]
+            coutLots=SimulationEnCours.DfCharges.loc[SimulationEnCours.DfCharges['ID prestation'] == IDPrestationActuel, 'Charges pour les lots sélectionnés'].iloc[0]
+            
+            #Boucles d'explication des charges
+            colPrestation, colSynthese = st.columns(2)
+            with colPrestation:
+                st.write(f"{row['Description']}")
+                st.write(f"{row['Description longue']}")
+                for prestation in prestationsSelectionnees:
+                    with st.container(border=True):
+                        st.write(f"**{prestation.Nom} - {prestation.Cout:.2f} €/an**")
+                        st.write(f"Prestataire: **_{prestation.Prestataire}_**")
+                        st.write(f"Description: {prestation.Description}")
+            with colSynthese:
                 with st.container(border=True):
-                    st.write(f"**{prestation.Nom} - {prestation.Cout:.2f} €/an**")
-                    st.write(f"Prestataire: **_{prestation.Prestataire}_**")
-                    st.write(f"Description: {prestation.Description}")
-        with colSynthese:
-            with st.container(border=True):
-                st.write(f"Coût de la provision : {MontantProvision:.2f} €")
-                st.write(f"Coût de la charge pour la résidence : {coutResidence:.2f} €")
-                st.write(f"**Détail du calcul**")
-                if IDPrestationActuel!="EAU":
-                    st.write(f"Les lots sélectionnés corresponent au total à {row['Tantiemes']:.0f} tantièmes associés aux lots, pour {row['Tantiemes totaux']:.0f} tantièmes totaux de la résidence.")
-                
-                #Explication du calcul des charges pour les lots sélectionnés
-                if ConditionProvisionCommune:
-                    st.latex(f"{coutResidence:.0f}\\times \\frac{{{row['Tantiemes']:.0f}}}{{{row['Tantiemes totaux']:.0f}}} = {coutLots:.2f}\\text{{ €/an}}")
-                elif SimulationEnCours.flagPasDeChauffageUtilise:
-                    st.write(f"La température extérieure est supérieure à la température dans les lots sélectionnées et dans la résidence, donc il n'y a pas de consommation de chauffage.")
-                elif TopConsommationDeChauffage:
-                    st.latex(f"{coutResidence:.0f} \\times \\frac{{{row['Tantiemes']:.0f}}}{{{row['Tantiemes totaux']:.0f}}} \\times \\left( 30\\% + 70\\% \\times \\frac{{{SimulationEnCours.TemperatureLot}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}}{{{SimulationEnCours.TemperatureResidence}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}} \\right) = {coutLots:.2f}\\text{{ €/an}}")
-                else:
-                    st.write(f"La consommation d'eau courante est de {consommationEauEnM3} m3.")
-                st.write(f"Le coût de la charge pour les lots sélectionnés est donc de {coutLots:.2f} € par an ou {coutLots/12:.2f} € par mois.")
+                    st.write(f"Coût de la provision : {MontantProvision:.2f} €")
+                    st.write(f"Coût de la charge pour la résidence : {coutResidence:.2f} €")
+                    st.write(f"**Détail du calcul**")
+                    if IDPrestationActuel!="EAU":
+                        st.write(f"Les lots sélectionnés corresponent au total à {row['Tantiemes']:.0f} tantièmes associés aux lots, pour {row['Tantiemes totaux']:.0f} tantièmes totaux de la résidence.")
+                    
+                    #Explication du calcul des charges pour les lots sélectionnés
+                    if ConditionProvisionCommune:
+                        st.latex(f"{coutResidence:.0f}\\times \\frac{{{row['Tantiemes']:.0f}}}{{{row['Tantiemes totaux']:.0f}}} = {coutLots:.2f}\\text{{ €/an}}")
+                    elif SimulationEnCours.flagPasDeChauffageUtilise:
+                        st.write(f"La température extérieure est supérieure à la température dans les lots sélectionnées et dans la résidence, donc il n'y a pas de consommation de chauffage.")
+                    elif TopConsommationDeChauffage:
+                        st.latex(f"{coutResidence:.0f} \\times \\frac{{{row['Tantiemes']:.0f}}}{{{row['Tantiemes totaux']:.0f}}} \\times \\left( 30\\% + 70\\% \\times \\frac{{{SimulationEnCours.TemperatureLot}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}}{{{SimulationEnCours.TemperatureResidence}\\text{{°C}} - {SimulationEnCours.TemperatureExterieure}\\text{{°C}}}} \\right) = {coutLots:.2f}\\text{{ €/an}}")
+                    else:
+                        st.write(f"La consommation d'eau courante est de {consommationEauEnM3} m3.")
+                    st.write(f"Le coût de la charge pour les lots sélectionnés est donc de {coutLots:.2f} € par an ou {coutLots/12:.2f} € par mois.")
 
-#SECTION 3 : Résultat du calcul des charges
-st.subheader("4. Résultat du calcul des charges",anchor="section-4")
-#Afficher tableau des charges 
-with st.expander(f"Tableau des provisions et les charges calculées") :     
-    df=SimulationEnCours.DfCharges.loc[SimulationEnCours.DfCharges["Charges pour les lots sélectionnés"] != 0]
-    st.dataframe(df.drop(columns=['ID prestation','Description longue',"TopConsommationDeChauffage", 'ID tantiemes','Description']),
-        column_config={
-            col: st.column_config.NumberColumn(col, format="%.2f €")
-            for col in ["Charge", "Provisions", "Charges pour les lots sélectionnés"]
-        }, 
-        hide_index=True,
-        height=(len(df) + 1) * 35 + 3
-    )
+    #SECTION 3 : Résultat du calcul des charges
+    st.subheader("4. Résultat du calcul des charges",anchor="section-4")
+    #Afficher tableau des charges 
+    with st.expander(f"Tableau des provisions et les charges calculées") :     
+        df=SimulationEnCours.DfCharges.loc[SimulationEnCours.DfCharges["Charges pour les lots sélectionnés"] != 0]
+        st.dataframe(df.drop(columns=['ID prestation','Description longue',"TopConsommationDeChauffage", 'ID tantiemes','Description']),
+            column_config={
+                col: st.column_config.NumberColumn(col, format="%.2f €")
+                for col in ["Charge", "Provisions", "Charges pour les lots sélectionnés"]
+            }, 
+            hide_index=True,
+            height=(len(df) + 1) * 35 + 3
+        )
 
-#Afficher les charges annuelles et mensuelles totales pour les lots sélectionnés
-st.success(f"**Total des charges annuelles pour les lots sélectionnés : {SimulationEnCours.DfCharges['Charges pour les lots sélectionnés'].sum():.2f} €**")
-st.success(f"**Total des charges mensuelles pour les lots sélectionnés : {SimulationEnCours.DfCharges['Charges pour les lots sélectionnés'].sum()/12:.2f} €**")
+    #Afficher les charges annuelles et mensuelles totales pour les lots sélectionnés
+    st.success(f"**Total des charges annuelles pour les lots sélectionnés : {SimulationEnCours.DfCharges['Charges pour les lots sélectionnés'].sum():.2f} €**")
+    st.success(f"**Total des charges mensuelles pour les lots sélectionnés : {SimulationEnCours.DfCharges['Charges pour les lots sélectionnés'].sum()/12:.2f} €**")
