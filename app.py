@@ -323,7 +323,7 @@ with st.form("formulaireSaisieParametres"):
     LstLotsChoisis = st.multiselect(
         "Lots de la résidence à inclure dans le calcul des charges",
         options=DfLots["Numéro de lot"].tolist(),
-        default=[113],
+        default=[219],
 
         format_func=lambda numeroDelot: DfLots[DfLots['Numéro de lot'] == numeroDelot]['Description'].iloc[0]) 
 
